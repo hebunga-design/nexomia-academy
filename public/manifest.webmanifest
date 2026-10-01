@@ -1,0 +1,14 @@
+{
+  "name": "NEXOMIA Academy",
+  "short_name": "NEXOMIA",
+  "description": "Apprendre. Produire. Transmettre.",
+  "start_url": "/#/",
+  "display": "standalone",
+  "background_color": "#F3F6F2",
+  "theme_color": "#1E2D3B",
+  "lang": "fr",
+  "icons": [
+    { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+  ]
+}
