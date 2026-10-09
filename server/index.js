@@ -60,7 +60,7 @@ const server = http.createServer(async (req, res) => {
     const m = routes.match(req.method === "HEAD" ? "GET" : req.method, pathname);
     if (m) {
       // Protection CSRF : les écritures doivent venir de la même origine (sauf notification du prestataire).
-      if (!["GET", "HEAD"].includes(req.method) && pathname !== "/api/payments/flexpay/callback") {
+      if (!["GET", "HEAD"].includes(req.method) && !pathname.startsWith("/api/payments/")) {
         const origin = req.headers.origin;
         if (origin && new URL(origin).host !== req.headers.host && new URL(origin).host !== (req.headers["x-forwarded-host"] || "")) throw new HttpError(403, "Origine refusée.");
       }

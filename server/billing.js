@@ -36,10 +36,53 @@ const FLEX = {
   checkUrl: process.env.FLEXPAY_CHECK_URL || "https://backend.flexpay.cd/api/rest/v1/check/{orderNumber}",
 };
 const flexpayEnabled = () => !!(FLEX.token && FLEX.merchant);
-const testModeEnabled = () => process.env.PAYMENTS_TEST_MODE !== "false" && !flexpayEnabled();
-function providerName() { return flexpayEnabled() ? "flexpay" : testModeEnabled() ? "test" : "none"; }
+
+// pawaPay (API v2) : Mobile Money uniquement. Prioritaire dès que le jeton est renseigné.
+const PAWA = {
+  token: process.env.PAWAPAY_TOKEN || "",
+  base: (process.env.PAWAPAY_BASE_URL || (process.env.PAWAPAY_SANDBOX === "true" ? "https://api.sandbox.pawapay.io" : "https://api.pawapay.io")).replace(/\/$/, ""),
+  message: (process.env.PAWAPAY_CUSTOMER_MESSAGE || "NEXOMIA Academy").replace(/[^A-Za-z0-9 ]/g, "").slice(0, 22),
+};
+const pawapayEnabled = () => !!PAWA.token;
+const PAWA_PROVIDERS = { mpesa: "VODACOM_MPESA_COD", airtel: "AIRTEL_COD", orange: "ORANGE_COD" };
+const PAWA_METHOD = Object.fromEntries(Object.entries(PAWA_PROVIDERS).map(([k, v]) => [v, k]));
+const PAWA_FAILURES = {
+  PAYER_NOT_FOUND: "Ce numéro n’a pas de compte Mobile Money actif chez cet opérateur.",
+  PAYMENT_NOT_APPROVED: "Le paiement n’a pas été validé sur le téléphone.",
+  PAYER_LIMIT_REACHED: "La limite de ton compte Mobile Money est atteinte.",
+  INSUFFICIENT_BALANCE: "Solde insuffisant sur ton compte Mobile Money.",
+  PAYMENT_IN_PROGRESS: "Un autre paiement est déjà en cours sur ce numéro. Réessaie dans quelques minutes.",
+  INVALID_PHONE_NUMBER: "Ce numéro n’est pas valide pour cet opérateur.",
+  INVALID_AMOUNT: "Montant refusé par l’opérateur.",
+  AMOUNT_OUT_OF_BOUNDS: "Montant refusé par l’opérateur (hors limites).",
+  INVALID_CURRENCY: "Cet opérateur n’accepte pas cette devise.",
+  INVALID_PROVIDER: "Cet opérateur n’est pas disponible pour le moment.",
+  PROVIDER_TEMPORARILY_UNAVAILABLE: "Le réseau de l’opérateur est momentanément indisponible. Réessaie plus tard.",
+};
+const pawaFailure = (fr) => (fr && (PAWA_FAILURES[fr.failureCode] || fr.failureMessage)) || "Le paiement n’a pas abouti.";
+
+const testModeEnabled = () => process.env.PAYMENTS_TEST_MODE !== "false" && !flexpayEnabled() && !pawapayEnabled();
+function providerName() { return pawapayEnabled() ? "pawapay" : flexpayEnabled() ? "flexpay" : testModeEnabled() ? "test" : "none"; }
 
 const METHODS = { mpesa: "M-Pesa", airtel: "Airtel Money", orange: "Orange Money", card: "Carte bancaire" };
+// Moyens proposés selon le prestataire actif (pawaPay ne prend pas la carte).
+function availableMethods() { return providerName() === "pawapay" ? ["mpesa", "airtel", "orange"] : Object.keys(METHODS); }
+
+async function pawaFetch(path, body) {
+  const ctrl = new AbortController(); const t = setTimeout(() => ctrl.abort(), 25000);
+  try {
+    const r = await fetch(PAWA.base + path, {
+      method: body ? "POST" : "GET", signal: ctrl.signal,
+      headers: { "Content-Type": "application/json", Accept: "application/json", Authorization: `Bearer ${PAWA.token}` },
+      body: body ? JSON.stringify(body) : undefined,
+    });
+    const text = await r.text();
+    let json = null; try { json = JSON.parse(text); } catch {}
+    return { http: r.status, json };
+  } finally { clearTimeout(t); }
+}
+// Montant au format pawaPay : pas de zéro final inutile ("5", "8.5").
+const pawaAmount = (x) => String(Math.round(x * 100) / 100);
 
 function normalizePhone(p) {
   let d = String(p || "").replace(/\D/g, "");
@@ -70,6 +113,7 @@ async function createOrder(user, { courseIds, method, phone }, baseUrl) {
   const provider = providerName();
   if (provider === "none") throw new HttpError(503, "Les paiements ne sont pas encore ouverts. Réessaie bientôt.");
   if (!METHODS[method]) throw new HttpError(400, "Choisis un moyen de paiement.");
+  if (!availableMethods().includes(method)) throw new HttpError(400, "La carte bancaire n’est pas encore disponible. Choisis M-Pesa, Airtel Money ou Orange Money.");
   const ids = [...new Set((courseIds || []).map(Number))].filter(Boolean);
   if (!ids.length) throw new HttpError(400, "Choisis au moins un cours.");
   if (ids.length > 20) throw new HttpError(400, "Trop de cours dans une même commande.");
@@ -88,6 +132,46 @@ async function createOrder(user, { courseIds, method, phone }, baseUrl) {
     return oid;
   });
   audit(user.id, "order_created", { ref, amount, method, provider, courses: ids });
+
+  if (provider === "pawapay") {
+    // On enregistre l'identifiant de paiement AVANT d'appeler pawaPay (recommandation pawaPay).
+    const depositId = crypto.randomUUID();
+    let providerCode = PAWA_PROVIDERS[method];
+    try {
+      // Corrige l'opérateur si le numéro appartient à un autre réseau que celui choisi.
+      const pred = await pawaFetch("/v2/predict-provider", { phoneNumber: tel });
+      if (pred.json && PAWA_METHOD[pred.json.provider]) providerCode = pred.json.provider;
+    } catch {}
+    const realMethod = PAWA_METHOD[providerCode];
+    run("UPDATE orders SET provider_order = ?, method = ? WHERE id = ?", depositId, realMethod, orderId);
+    let resp;
+    try {
+      resp = await pawaFetch("/v2/deposits", {
+        depositId, amount: pawaAmount(amount), currency: "USD", clientReferenceId: ref, customerMessage: PAWA.message,
+        payer: { type: "MMO", accountDetails: { phoneNumber: tel, provider: providerCode } },
+        metadata: [{ orderRef: ref }, { userId: String(user.id) }],
+      });
+    } catch {
+      run("UPDATE orders SET provider_message = ? WHERE id = ?", "Réponse incertaine : vérification en cours", orderId);
+      return { ref, amount, status: "pending", message: "Nous vérifions ton paiement. Ne relance pas de paiement pour le moment." };
+    }
+    const st = resp.json && resp.json.status;
+    if (st === "ACCEPTED" || st === "DUPLICATE_IGNORED") {
+      const note = realMethod !== method ? `Numéro ${METHODS[realMethod]} détecté. ` : "";
+      const msg = `${note}Valide le paiement de ${amount} USD sur ton téléphone (${METHODS[realMethod]}). Cette page se met à jour toute seule.`;
+      run("UPDATE orders SET provider_message = ? WHERE id = ?", msg, orderId);
+      return { ref, amount, status: "pending", message: msg };
+    }
+    if (st === "REJECTED") {
+      const msg = pawaFailure(resp.json.failureReason);
+      failOrder(orderId, msg);
+      audit(user.id, "pawapay_rejected", { ref, failure: resp.json.failureReason });
+      throw new HttpError(400, msg);
+    }
+    // 5xx ou réponse inattendue : la commande reste en attente et sera vérifiée.
+    run("UPDATE orders SET provider_message = ? WHERE id = ?", "Réponse incertaine : vérification en cours", orderId);
+    return { ref, amount, status: "pending", message: "Nous vérifions ton paiement. Ne relance pas de paiement pour le moment." };
+  }
 
   if (provider === "flexpay") {
     const callbackUrl = `${baseUrl}/api/payments/flexpay/callback`;
@@ -137,6 +221,39 @@ function markPaid(orderId, source = "payment") {
   });
 }
 
+async function verifyWithPawapay(order) {
+  if (order.provider !== "pawapay" || order.status !== "pending" || !order.provider_order || !pawapayEnabled()) return order;
+  run("UPDATE orders SET last_check = ? WHERE id = ?", new Date().toISOString(), order.id);
+  let resp;
+  try { resp = await pawaFetch(`/v2/deposits/${encodeURIComponent(order.provider_order)}`); } catch { return order; }
+  const j = resp.json;
+  if (!j) return order;
+  if (j.status === "NOT_FOUND") {
+    // Jamais reçu par pawaPay : après 15 minutes, on considère l'envoi comme échoué.
+    const ageMin = (Date.now() - new Date(order.created_at.replace(" ", "T") + "Z").getTime()) / 60000;
+    if (ageMin > 15) failOrder(order.id, "Le paiement n’a pas été transmis. Tu peux réessayer.");
+    return one("SELECT * FROM orders WHERE id = ?", order.id);
+  }
+  const d = j.data;
+  if (j.status !== "FOUND" || !d) return order;
+  if (d.status === "COMPLETED") {
+    const okAmount = Math.abs(Number(d.amount) - order.amount_usd) < 0.01;
+    const okCur = String(d.currency).toUpperCase() === order.currency;
+    if (okAmount && okCur && d.depositId === order.provider_order) {
+      if (d.providerTransactionId) run("UPDATE orders SET provider_message = ? WHERE id = ?", `Transaction opérateur ${d.providerTransactionId}`, order.id);
+      markPaid(order.id, "pawapay");
+    } else {
+      failOrder(order.id, "Montant ou devise différents : vérification manuelle requise.");
+      audit(order.user_id, "order_mismatch", { ref: order.ref, data: d });
+    }
+  } else if (d.status === "FAILED") {
+    failOrder(order.id, pawaFailure(d.failureReason));
+  }
+  return one("SELECT * FROM orders WHERE id = ?", order.id);
+}
+
+const verifyOrder = (o) => o.provider === "pawapay" ? verifyWithPawapay(o) : o.provider === "flexpay" ? verifyWithFlexpay(o) : Promise.resolve(o);
+
 async function verifyWithFlexpay(order) {
   if (order.provider !== "flexpay" || order.status !== "pending") return order;
   if (!order.provider_order) return order;
@@ -158,9 +275,9 @@ async function verifyWithFlexpay(order) {
 async function orderStatus(user, ref) {
   let o = one("SELECT * FROM orders WHERE ref = ? AND user_id = ?", ref, user.id);
   if (!o) throw new HttpError(404, "Commande introuvable.");
-  if (o.status === "pending" && o.provider === "flexpay") {
+  if (o.status === "pending" && (o.provider === "flexpay" || o.provider === "pawapay")) {
     const recent = o.last_check && Date.now() - new Date(o.last_check).getTime() < 4000;
-    if (!recent) o = await verifyWithFlexpay(o);
+    if (!recent) o = await verifyOrder(o);
   }
   return publicOrder(o);
 }
@@ -172,13 +289,13 @@ function publicOrder(o) {
 // Rapprochement périodique des paiements FlexPay en attente (48 h max).
 function startReconciliation() {
   setInterval(async () => {
-    if (!flexpayEnabled()) return;
+    if (!flexpayEnabled() && !pawapayEnabled()) return;
     const since = new Date(Date.now() - 48 * 3600e3).toISOString().replace("T", " ").slice(0, 19);
-    for (const o of all("SELECT * FROM orders WHERE status = 'pending' AND provider = 'flexpay' AND created_at > ? LIMIT 50", since)) {
-      await verifyWithFlexpay(o);
+    for (const o of all("SELECT * FROM orders WHERE status = 'pending' AND provider IN ('flexpay','pawapay') AND created_at > ? LIMIT 50", since)) {
+      try { await verifyOrder(o); } catch (e) { console.error("rapprochement", o.ref, e.message); }
     }
     run("UPDATE orders SET status = 'cancelled', provider_message = 'Expirée sans confirmation' WHERE status = 'pending' AND created_at <= ?", since);
-  }, 5 * 60e3).unref();
+  }, 2 * 60e3).unref();
 }
 
-module.exports = { addOneMonth, activeEnd, activeSubs, createOrder, orderStatus, publicOrder, markPaid, failOrder, verifyWithFlexpay, startReconciliation, providerName, flexpayEnabled, testModeEnabled, METHODS };
+module.exports = { addOneMonth, activeEnd, activeSubs, createOrder, orderStatus, publicOrder, markPaid, failOrder, verifyWithFlexpay, verifyWithPawapay, verifyOrder, startReconciliation, providerName, flexpayEnabled, pawapayEnabled, testModeEnabled, availableMethods, METHODS };

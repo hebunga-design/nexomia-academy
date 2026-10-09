@@ -47,7 +47,7 @@ const ROLE_FR = { learner: "Apprenant", mentor: "Mentor", coach: "Accompagnateur
 const can = (role) => S.me && RANK[S.me.role] >= RANK[role];
 
 /* ================= État ================= */
-const S = { me: null, payments: "test", catalog: null, pricing: null, filter: "Tous", cart: store.get("cart", []), payMethod: "mpesa" };
+const S = { me: null, payments: "test", methods: ["mpesa", "airtel", "orange", "card"], catalog: null, pricing: null, filter: "Tous", cart: store.get("cart", []), payMethod: "mpesa" };
 const priceFor = (n, p = S.pricing) => { if (!p || n <= 0) return 0; const t = p.tiers; return n <= t.length ? t[n - 1] : t[t.length - 1] + (n - t.length) * p.extra; };
 
 /* ================= Voix (synthèse de l'appareil, en secours) ================= */
@@ -201,7 +201,7 @@ async function render() {
     app.innerHTML = `<div class="empty"><p><b>${esc(e.message)}</b></p><p style="margin-top:12px"><button class="btn btn-ghost btn-sm" data-reload>Réessayer</button></p></div>`;
   }
 }
-const footer = () => `<footer><div class="wrap" style="padding:0"><span><b style="color:var(--ink)">NEXOMIA</b> · Former · Créer · Transformer · Lubumbashi, RDC</span><span>Paiements : M-Pesa · Airtel Money · Orange Money · Carte</span></div></footer>`;
+const footer = () => `<footer><div class="wrap" style="padding:0"><span><b style="color:var(--ink)">NEXOMIA</b> · Former · Créer · Transformer · Lubumbashi, RDC</span><span>Paiements : M-Pesa · Airtel Money · Orange Money${S.methods.includes("card") ? " · Carte" : ""}</span></div></footer>`;
 
 async function loadCatalog(force) { if (!S.catalog || force) { const d = await api("/api/catalog"); S.catalog = d.courses; S.pricing = d.pricing; } return S.catalog; }
 
@@ -228,7 +228,7 @@ function priceBlock() {
       <p class="amount" style="margin-top:10px">${money(p.tiers[0])} <small>par cours · par mois</small></p>
       <p class="muted" style="margin-top:10px;max-width:42ch">Tu paies uniquement les cours que tu suis, et c’est moins cher quand tu en prends plusieurs ensemble. La première leçon de chaque cours est gratuite.</p>
       <div class="examples">${ex.map(([n, t]) => `<div><span>${n} cours${n > 1 ? ` · soit ${money(t / n)} par cours` : ""}</span><b>${money(t)} / mois</b></div>`).join("")}</div>
-      <div class="pay"><span class="chip">M-Pesa</span><span class="chip">Airtel Money</span><span class="chip">Orange Money</span><span class="chip">Visa · Mastercard</span></div></div>
+      <div class="pay"><span class="chip">M-Pesa</span><span class="chip">Airtel Money</span><span class="chip">Orange Money</span>${S.methods.includes("card") ? `<span class="chip">Visa · Mastercard</span>` : ""}</div></div>
     <div><ul class="ticks"><li>Tous les niveaux et toutes les leçons du cours choisi</li><li>Audios téléchargeables pour écouter sans données</li><li>Exercices corrigés et révisions</li><li>Accompagnement par l’équipe NEXOMIA et groupes de pratique</li><li>Sans engagement : tu renouvelles quand tu veux</li></ul>
       <a class="btn btn-primary" style="margin-top:20px;width:100%" href="#/abonnements">Choisir mes cours</a></div>
   </div>`;
@@ -413,17 +413,18 @@ async function vSubs(query) {
   const total = priceFor(cart.length), single = S.pricing.tiers[0] * cart.length;
   const ref = query.get("ref");
   if (ref && S.me) setTimeout(() => pollOrder(ref), 50);
+  if (!S.methods.includes(S.payMethod)) S.payMethod = S.methods[0];
   return `<p class="eyebrow">Abonnements · ${money(S.pricing.tiers[0])} par cours et par mois</p><h1 style="font-size:clamp(30px,4vw,44px);margin:8px 0 6px">Choisis tes cours</h1>
   <p class="muted" style="max-width:62ch">Chaque cours est un abonnement séparé, avec sa propre date de fin. Plus tu prends de cours ensemble, moins chaque cours coûte : ${[2, 3].map((n) => `${n} cours = ${money(priceFor(n))}`).join(", ")}.</p>
   <div class="dash" style="margin-top:22px"><div class="card">
-    ${S.payments === "test" ? `<div class="demo-banner"><b>Mode test.</b> Les paiements sont simulés : aucun argent n’est prélevé. Le mode réel s’active dès que le compte FlexPay est configuré.</div>` : ""}
+    ${S.payments === "test" ? `<div class="demo-banner"><b>Mode test.</b> Les paiements sont simulés : aucun argent n’est prélevé. Le mode réel s’active dès que le prestataire de paiement est configuré.</div>` : ""}
     <div id="payState"></div>
     <h3 style="font-size:20px">1. Cours</h3>
     <div class="cartlist" role="group" aria-label="Cours à payer">${courses.map((c) => { const on = S.cart.includes(c.id); return `<button class="citem" data-cart="${c.id}" aria-pressed="${on}"><span class="box">${on ? "✓" : ""}</span><span style="min-width:0"><b>${esc(c.title)}</b><br><small class="muted">${esc(c.domain)} · ${c.subscribed_until ? `abonné jusqu’au ${fmtD(c.subscribed_until)} · prolonger` : esc(c.level)}</small></span><span class="pricetag">${money(S.pricing.tiers[0])}</span></button>`; }).join("")}</div>
     <h3 style="font-size:20px;margin-top:8px">2. Moyen de paiement</h3>
-    <div class="methods" role="group" aria-label="Moyen de paiement">${Object.entries(METHODS).map(([k, v]) => `<button class="method" data-pm="${k}" aria-pressed="${S.payMethod === k}">${v[0]}<small>${v[1]}</small></button>`).join("")}</div>
+    <div class="methods" role="group" aria-label="Moyen de paiement">${Object.entries(METHODS).filter(([k]) => S.methods.includes(k)).map(([k, v]) => `<button class="method" data-pm="${k}" aria-pressed="${S.payMethod === k}">${v[0]}<small>${v[1]}</small></button>`).join("")}</div>
     ${S.payMethod === "card" ? `<p class="muted" style="font-size:15px">Tu seras redirigé vers la page sécurisée du prestataire pour saisir ta carte. NEXOMIA ne voit jamais ton numéro de carte.</p>`
-      : `<div class="field"><label for="f-phone">Numéro ${esc(METHODS[S.payMethod][0])}</label><input id="f-phone" inputmode="tel" autocomplete="tel" placeholder="+243 81 234 5678" value="${esc(store.get("phone", S.me && S.me.phone || ""))}"><span class="hint">Tu valideras le paiement sur ton téléphone. Ne communique jamais ton code PIN à personne.</span></div>`}
+      : `<div class="field"><label for="f-phone">Numéro ${esc(METHODS[S.payMethod][0])}</label><input id="f-phone" inputmode="tel" autocomplete="tel" placeholder="+243 81 234 5678" value="${esc(store.get("phone", S.me && S.me.phone || ""))}"><span class="hint">Tu recevras une demande de paiement sur ce téléphone : valide-la avec ton code secret, uniquement sur ton téléphone. Ne communique jamais ton code PIN à personne.</span></div>`}
     ${S.me ? `<button class="btn btn-primary" style="width:100%;margin-top:8px" id="payBtn" ${cart.length ? "" : "disabled"}>${cart.length ? `Payer ${money(total)}` : "Choisis au moins un cours"}</button>`
       : `<a class="btn btn-primary" style="width:100%;margin-top:8px" href="#/connexion?next=${encodeURIComponent("#/abonnements")}">Se connecter pour payer</a>`}
   </div>
@@ -589,7 +590,7 @@ async function vAdmin() {
     return head + `<div class="table-wrap"><table class="t"><thead><tr><th>Date</th><th>Apprenant</th><th>Cours</th><th>Moyen</th><th>Montant</th><th>Statut</th><th></th></tr></thead><tbody>
     ${orders.map((o) => `<tr><td>${fmtD(o.created_at)}<br><small class="muted">${esc(o.ref)}</small></td><td>${esc(o.user)}<br><small class="muted">${esc(o.phone || o.email)}</small></td><td>${o.items.map((i) => esc(i.title)).join(", ")}</td><td>${esc(o.method)}${o.provider === "test" ? `<br><small class="muted">test</small>` : ""}</td><td class="num">${money(o.amount)}</td>
       <td><span class="status ${o.status === "paid" ? "st-pub" : o.status === "pending" ? "st-review" : "st-draft"}">${{ paid: "Payé", pending: "En attente", failed: "Échoué", cancelled: "Expiré" }[o.status]}</span>${o.message ? `<br><small class="muted">${esc(o.message)}</small>` : ""}</td>
-      <td>${o.status === "pending" && o.provider === "flexpay" ? `<button class="btn btn-ghost btn-sm" data-verify="${esc(o.ref)}">Vérifier</button>` : ""}</td></tr>`).join("") || `<tr><td colspan="7" class="muted">Aucun paiement pour l’instant.</td></tr>`}
+      <td>${o.status === "pending" && (o.provider === "flexpay" || o.provider === "pawapay") ? `<button class="btn btn-ghost btn-sm" data-verify="${esc(o.ref)}">Vérifier</button>` : ""}</td></tr>`).join("") || `<tr><td colspan="7" class="muted">Aucun paiement pour l’instant.</td></tr>`}
     </tbody></table></div>`;
   }
   const o = await api("/api/admin/overview");
@@ -600,8 +601,8 @@ async function vAdmin() {
   <div class="dash"><form class="card" id="pricingForm"><h3 style="font-size:20px">Tarif dégressif</h3><p class="muted" style="font-size:14px;margin:6px 0 14px">Prix total d’une commande selon le nombre de cours payés ensemble. Au-delà du dernier palier, chaque cours ajoute le montant indiqué.</p>
       <div class="two">${o.pricing.tiers.map((t, i) => `<div class="field"><label for="tier-${i}">${i + 1} cours (USD)</label><input id="tier-${i}" data-tier type="number" min="0.5" step="0.5" value="${t}"></div>`).join("")}<div class="field"><label for="tier-extra">Chaque cours en plus (USD)</label><input id="tier-extra" type="number" min="0.5" step="0.5" value="${o.pricing.extra}"></div></div>
       <button class="btn btn-primary btn-sm">Enregistrer le tarif</button><p class="err" id="formErr" role="alert"></p></form>
-    <div class="card"><h3 style="font-size:20px">Paiements</h3><p style="margin-top:8px">Mode actuel : <b>${o.payments === "flexpay" ? "FlexPay (réel)" : o.payments === "test" ? "Test (simulation)" : "Fermé"}</b></p>
-      <p class="muted" style="font-size:14px;margin-top:8px">Pour activer les vrais paiements, renseigne les variables FLEXPAY_TOKEN et FLEXPAY_MERCHANT dans Railway, puis vérifie un paiement réel de faible montant par réseau.</p></div></div>`;
+    <div class="card"><h3 style="font-size:20px">Paiements</h3><p style="margin-top:8px">Mode actuel : <b>${{ pawapay: "pawaPay (réel)", flexpay: "FlexPaie (réel)", test: "Test (simulation)" }[o.payments] || "Fermé"}</b></p>
+      <p class="muted" style="font-size:14px;margin-top:8px">${o.payments === "test" ? "Pour activer les vrais paiements, renseigne PAWAPAY_TOKEN (ou FLEXPAY_TOKEN et FLEXPAY_MERCHANT) dans Railway." : "Les paiements sont vérifiés auprès du prestataire avant toute activation. Fais un paiement réel de faible montant par réseau avant d’ouvrir au public."}</p></div></div>`;
 }
 
 /* ================= Événements ================= */
@@ -686,7 +687,7 @@ window.addEventListener("hashchange", () => { $("#layer").innerHTML = ""; render
 document.addEventListener("keydown", (e) => { if (e.key === "Escape") $("#layer").innerHTML = ""; });
 
 async function boot(silent) {
-  try { const r = await api("/api/me"); S.me = r.user; S.payments = r.payments; } catch { S.me = null; }
+  try { const r = await api("/api/me"); S.me = r.user; S.payments = r.payments; if (r.methods) S.methods = r.methods; } catch { S.me = null; }
   if (!silent) render();
 }
 (() => { const t = store.get("theme", null); if (t) document.documentElement.dataset.theme = t; })();

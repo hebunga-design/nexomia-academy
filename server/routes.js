@@ -27,7 +27,7 @@ function courseVisible(user, c) { return c && (c.status === "published" || isSta
 r.get("/health", (ctx) => ok(ctx, { ok: true, time: nowIso() }));
 
 // ---------- Comptes ----------
-r.get("/api/me", (ctx) => ok(ctx, { user: ctx.user, payments: B.providerName() }));
+r.get("/api/me", (ctx) => ok(ctx, { user: ctx.user, payments: B.providerName(), methods: B.availableMethods() }));
 r.post("/api/auth/register", async (ctx) => {
   A.throttle("reg:" + ctx.ip, 10);
   const b = await readJson(ctx.req);
@@ -167,6 +167,16 @@ r.post("/api/orders/:ref/test-result", async (ctx) => {
   const b = await readJson(ctx.req);
   if (b.result === "success") B.markPaid(o.id, "test"); else B.failOrder(o.id, "Paiement refusé (simulation).");
   ok(ctx, await B.orderStatus(ctx.user, o.ref));
+});
+// Notification pawaPay : on ne croit jamais le contenu, on revérifie le statut auprès de pawaPay.
+r.post("/api/payments/pawapay/callback", async (ctx) => {
+  const b = await readJson(ctx.req).catch(() => ({}));
+  const depositId = b && (b.depositId || (b.data && b.data.depositId));
+  if (depositId) {
+    const o = one("SELECT * FROM orders WHERE provider = 'pawapay' AND provider_order = ?", String(depositId));
+    if (o) { try { await B.verifyWithPawapay(o); } catch (e) { console.error("callback pawapay", e.message); } }
+  }
+  ok(ctx, { received: true });
 });
 // Notification FlexPay : son contenu n'est jamais cru tel quel, on revérifie auprès de FlexPay.
 r.post("/api/payments/flexpay/callback", async (ctx) => {
@@ -385,7 +395,7 @@ r.post("/api/admin/orders/:ref/verify", async (ctx) => {
   admin(ctx);
   const o = one("SELECT * FROM orders WHERE ref = ?", ctx.params.ref);
   if (!o) throw new HttpError(404, "Commande introuvable.");
-  ok(ctx, B.publicOrder(await B.verifyWithFlexpay(o)));
+  ok(ctx, B.publicOrder(await B.verifyOrder(o)));
 });
 r.put("/api/admin/pricing", async (ctx) => {
   admin(ctx);
