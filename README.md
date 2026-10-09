@@ -54,8 +54,18 @@ ADMIN_EMAILS=vous@exemple.com node server/index.js
 | `ADMIN_EMAILS` | Adresses qui deviennent administrateurs à l’inscription, séparées par des virgules |
 | `PUBLIC_URL` | Adresse publique du site (pour les retours de paiement) |
 | `PAYMENTS_TEST_MODE` | `true` par défaut : paiements simulés tant que FlexPay n’est pas configuré. `false` pour fermer les paiements |
+| `PAWAPAY_TOKEN` | Jeton API pawaPay (prestataire prioritaire dès qu’il est renseigné ; Mobile Money uniquement) |
+| `PAWAPAY_SANDBOX` | `true` pour utiliser l’environnement de test pawaPay avec un jeton de test |
 | `FLEXPAY_TOKEN`, `FLEXPAY_MERCHANT` | Identifiants du compte marchand FlexPay. Dès qu’ils sont renseignés, le mode test s’arrête |
 | `FLEXPAY_PAYMENT_URL`, `FLEXPAY_CARD_URL`, `FLEXPAY_CHECK_URL` | Adresses de l’API FlexPay, à confirmer avec FlexPay (des valeurs par défaut sont prévues) |
+
+## Paiements pawaPay
+
+1. Le serveur crée la commande et un identifiant de paiement avant d’appeler pawaPay ; le montant est calculé côté serveur.
+2. L’opérateur est déduit du numéro (M-Pesa, Airtel, Orange) ; l’apprenant valide sur son téléphone.
+3. Adresse de notification à déclarer dans le tableau de bord pawaPay : `https://<site>/api/payments/pawapay/callback`.
+4. Chaque notification déclenche une vérification du statut auprès de pawaPay ; seul un statut `COMPLETED` avec le bon montant et la bonne devise active l’abonnement, une seule fois par cours.
+5. Les commandes en attente sont revérifiées toutes les 2 minutes pendant 48 heures.
 
 ## Paiements FlexPay
 
