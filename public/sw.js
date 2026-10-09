@@ -1,7 +1,7 @@
 // Service worker NEXOMIA : application disponible hors connexion, leçons et audios téléchargés.
-const SHELL = "nx-shell-v1";
+const SHELL = "nx-shell-v2";
 const OFFLINE = "nx-offline-v1";
-const SHELL_FILES = ["/", "/app.css", "/app.js", "/manifest.webmanifest", "/icon-192.png"];
+const SHELL_FILES = ["/", "/manifest.webmanifest", "/icon-192.png"];
 
 self.addEventListener("install", (e) => { e.waitUntil(caches.open(SHELL).then((c) => c.addAll(SHELL_FILES)).then(() => self.skipWaiting())); });
 self.addEventListener("activate", (e) => { e.waitUntil(caches.keys().then((ks) => Promise.all(ks.filter((k) => k.startsWith("nx-shell") && k !== SHELL).map((k) => caches.delete(k)))).then(() => self.clients.claim())); });

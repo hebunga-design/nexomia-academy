@@ -27,6 +27,9 @@ function baseUrlOf(req) {
   return `${proto}://${req.headers["x-forwarded-host"] || req.headers.host}`;
 }
 
+// Version de déploiement : force les navigateurs à recharger app.js et app.css après chaque mise à jour.
+const VERSION = (process.env.RAILWAY_GIT_COMMIT_SHA || String(Date.now())).slice(0, 10);
+
 // Petits fichiers texte compressés à la volée (connexions lentes).
 const gzCache = new Map();
 function serveStatic(req, res, file) {
@@ -36,11 +39,15 @@ function serveStatic(req, res, file) {
     let st; try { st = fs.statSync(file); } catch { return false; }
     const key = file + ":" + st.mtimeMs;
     let gz = gzCache.get(key);
-    if (!gz) { gz = zlib.gzipSync(fs.readFileSync(file)); gzCache.set(key, gz); }
+    if (!gz) { let buf = fs.readFileSync(file); if (ext === ".html") buf = Buffer.from(buf.toString("utf8").replace(/__VERSION__/g, VERSION)); gz = zlib.gzipSync(buf); gzCache.set(key, gz); }
     const types = { ".js": "text/javascript; charset=utf-8", ".css": "text/css; charset=utf-8", ".html": "text/html; charset=utf-8", ".webmanifest": "application/manifest+json", ".json": "application/json" };
-    res.writeHead(200, { "Content-Type": types[ext], "Content-Encoding": "gzip", "Vary": "Accept-Encoding", "Cache-Control": ext === ".html" || file.endsWith("sw.js") ? "no-cache" : "public, max-age=3600" });
+    res.writeHead(200, { "Content-Type": types[ext], "Content-Encoding": "gzip", "Vary": "Accept-Encoding", "Cache-Control": ext === ".html" || file.endsWith("sw.js") ? "no-cache" : "public, max-age=31536000, immutable" });
     res.end(gz);
     return true;
+  }
+  if (path.extname(file) === ".html") { // navigateur sans gzip
+    const html = fs.readFileSync(file, "utf8").replace(/__VERSION__/g, VERSION);
+    res.writeHead(200, { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-cache" }); res.end(html); return true;
   }
   return serveFile(req, res, file, { cache: "public, max-age=86400" });
 }
