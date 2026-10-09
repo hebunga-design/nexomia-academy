@@ -442,37 +442,118 @@ async function vSubs(query) {
     </div>` : ""}
   </div></div>`;
 }
+const maskPhone = (p) => { const d = String(p || "").replace(/\D/g, "").replace(/^0/, "243"); const n = d.startsWith("243") ? d : "243" + d; return n.length >= 12 ? `+243 ${n.slice(3, 5)} ••• ${n.slice(-4)}` : String(p || ""); };
+const OPERATOR = { mpesa: "M-Pesa", airtel: "Airtel Money", orange: "Orange Money", card: "carte bancaire" };
+let payCtx = null; // { phone, method, ref, started }
+
 async function pay(btn) {
   const ph = $("#f-phone");
+  if (ph && ph.value.replace(/\D/g, "").length < 9) { ph.focus(); $("#payState").innerHTML = `<div class="feedback" style="color:var(--bad);margin-bottom:14px"><b>Saisis ton numéro ${esc(OPERATOR[S.payMethod])} complet, par exemple 0970 000 000.</b></div>`; ph.scrollIntoView({ block: "center", behavior: "smooth" }); return; }
   const body = { courseIds: S.cart, method: S.payMethod, phone: ph ? ph.value : undefined };
   if (ph) store.set("phone", ph.value);
-  btn.disabled = true;
+  const label = btn.innerHTML;
+  btn.disabled = true; btn.classList.add("is-loading");
+  btn.innerHTML = `<span class="spin" aria-hidden="true"></span> Envoi de la demande à ${esc(OPERATOR[S.payMethod])}…`;
+  payCtx = { phone: body.phone, method: S.payMethod, started: Date.now() };
   try {
     const o = await api("/api/orders", { method: "POST", body });
     if (o.redirect) { location.href = o.redirect; return; }
     S.cart = []; store.set("cart", S.cart);
+    payCtx.ref = o.ref;
     showOrder(o);
     if (!o.test) pollOrder(o.ref);
-  } catch (e) { $("#payState").innerHTML = `<div class="feedback" style="color:var(--bad);margin-bottom:14px"><b>${esc(e.message)}</b></div>`; btn.disabled = false; }
+  } catch (e) {
+    btn.disabled = false; btn.classList.remove("is-loading"); btn.innerHTML = label;
+    openPayModal({ status: "error", message: e.message });
+  }
 }
+
+function openPayModal(o) {
+  const layer = $("#layer");
+  let m = $("#payModal");
+  if (!m) { layer.innerHTML = `<div class="overlay" id="ov"><div class="celebrate paymodal" id="payModal" role="dialog" aria-modal="true" aria-live="polite"></div></div>`; m = $("#payModal"); }
+  const op = OPERATOR[(payCtx && payCtx.method) || S.payMethod] || "Mobile Money";
+  const detected = o.method && o.method !== op && /M-Pesa|Airtel|Orange/.test(o.method) ? o.method : op;
+  if (o.status === "paid") {
+    m.dataset.state = "paid";
+    m.innerHTML = `<div class="pm-icon ok" aria-hidden="true">✓</div>
+      <h2>Paiement confirmé</h2>
+      <p class="muted">${money(o.amount)} reçus via ${esc(o.method || detected)}. Merci !</p>
+      ${o.items && o.items.length ? `<div class="pm-box"><b>Accès ouvert :</b> ${o.items.map((i) => esc(i.title)).join(", ")}</div>` : ""}
+      <p class="muted" style="font-size:13px">Référence ${esc(o.ref)}</p>
+      <div class="pm-actions"><a class="btn btn-primary" href="#/parcours" data-close>Commencer à apprendre</a><button class="btn btn-ghost" data-close>Fermer</button></div>`;
+    return;
+  }
+  if (o.status === "failed" || o.status === "cancelled" || o.status === "error") {
+    m.dataset.state = "failed";
+    m.innerHTML = `<div class="pm-icon bad" aria-hidden="true">!</div>
+      <h2>Paiement non abouti</h2>
+      <p>${esc(o.message || "Le paiement n’a pas été confirmé.")}</p>
+      <p class="muted" style="font-size:14px">Aucun montant n’a été prélevé pour cet essai et aucun abonnement n’a été activé.</p>
+      <div class="pm-actions"><button class="btn btn-primary" data-close data-retrypay>Réessayer</button></div>`;
+    return;
+  }
+  // En attente
+  const secs = payCtx ? Math.round((Date.now() - payCtx.started) / 1000) : 0;
+  const late = secs > 120;
+  if (m.dataset.state === "pending" && !o.test) {
+    const st = m.querySelector(".pm-status");
+    if (st) st.innerHTML = `<span class="dot"></span> ${late ? "Toujours en attente de la réponse de l’opérateur…" : "En attente de ta confirmation…"} <span class="muted">${Math.floor(secs / 60) ? Math.floor(secs / 60) + " min " : ""}${secs % 60} s</span>`;
+    if (late && !m.dataset.lateShown) { m.dataset.lateShown = "1"; const h = m.querySelector(".pm-help"); if (h) h.open = true; }
+    return;
+  }
+  m.dataset.state = "pending";
+  m.innerHTML = `<div class="pm-icon wait" aria-hidden="true"><span class="spin big"></span></div>
+    <h2>Confirme le paiement sur ton téléphone</h2>
+    <p>Une demande de <b>${money(o.amount)}</b> a été envoyée à ton compte <b>${esc(detected)}</b>${payCtx && payCtx.phone ? ` (${esc(maskPhone(payCtx.phone))})` : ""}.</p>
+    ${o.test ? `<div class="pm-box">Mode test : aucun téléphone ne sonnera. Choisis le résultat à simuler.</div>
+      <div class="pm-actions"><button class="btn btn-primary btn-sm" data-testpay="${esc(o.ref)}" data-result="success">Simuler un paiement réussi</button><button class="btn btn-ghost btn-sm" data-testpay="${esc(o.ref)}" data-result="fail">Simuler un refus</button></div>` : `
+    <ol class="pm-steps">
+      <li>Regarde l’écran de ton téléphone : une notification <b>${esc(detected)}</b> va s’afficher.</li>
+      <li>Vérifie le montant : <b>${money(o.amount)}</b> pour NEXOMIA Academy.</li>
+      <li>Entre ton <b>code secret</b> sur ton téléphone pour accepter.</li>
+    </ol>
+    <div class="pm-status"><span class="dot"></span> ${late ? "Toujours en attente de la réponse de l’opérateur…" : "En attente de ta confirmation…"} <span class="muted">${secs > 5 ? `${Math.floor(secs / 60) ? Math.floor(secs / 60) + " min " : ""}${secs % 60} s` : ""}</span></div>
+    <details class="pm-help"${late ? " open" : ""}><summary>Je n’ai rien reçu sur mon téléphone</summary>
+      <ul>
+        <li>Garde ton téléphone allumé, déverrouillé et avec du réseau.</li>
+        <li>Vérifie que le numéro est bien celui de ton compte ${esc(detected)}.</li>
+        <li>Vérifie que tu as assez de solde <b>en dollars (USD)</b> sur ce compte.</li>
+        <li>Regarde dans le menu ${esc(detected)} de ton téléphone si une demande de paiement est en attente.</li>
+        <li>Si la demande a expiré, ferme cette fenêtre et clique à nouveau sur « Payer ».</li>
+      </ul></details>
+    <p class="muted" style="font-size:13px;margin-top:10px">Ne ferme pas cette page. Elle se met à jour toute seule. Référence ${esc(o.ref)}.</p>
+    <div class="pm-actions"><button class="btn btn-ghost btn-sm" data-close>Fermer cette fenêtre</button></div>`}`;
+}
+
 function showOrder(o) {
+  if (o.status === "paid" || o.status === "failed" || o.status === "cancelled") {
+    const btn = $("#payBtn"); if (btn) { btn.classList.remove("is-loading"); }
+  }
+  const dismissed = payCtx && payCtx.dismissed && o.status === "pending";
+  if ($("#payModal") || (location.hash.startsWith("#/abonnements") && !dismissed)) openPayModal(o);
   const el = $("#payState"); if (!el) return;
-  const items = o.items ? o.items.map((i) => esc(i.title)).join(", ") : "";
-  if (o.status === "paid") { el.innerHTML = `<div class="feedback" style="margin-bottom:14px;background:var(--hi)"><b style="color:var(--green)">Paiement confirmé.</b> ${items ? `Accès ouvert : ${items}.` : ""} Référence ${esc(o.ref)}.</div>`; return; }
-  if (o.status === "failed" || o.status === "cancelled") { el.innerHTML = `<div class="feedback" style="margin-bottom:14px"><b style="color:var(--bad)">Paiement non abouti.</b> ${esc(o.message || "")} Aucun abonnement n’a été activé. Tu peux réessayer.</div>`; return; }
-  el.innerHTML = `<div class="feedback" style="margin-bottom:14px"><b>En attente de confirmation · ${money(o.amount)}</b><br>Référence ${esc(o.ref)}. ${o.test ? "Mode test : choisis le résultat à simuler." : esc(o.message || "Valide le paiement sur ton téléphone. Cette page se met à jour toute seule.")}
-    ${o.test ? `<div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap"><button class="btn btn-primary btn-sm" data-testpay="${esc(o.ref)}" data-result="success">Simuler un paiement réussi</button><button class="btn btn-ghost btn-sm" data-testpay="${esc(o.ref)}" data-result="fail">Simuler un refus</button></div>` : ""}</div>`;
+  if (o.status === "paid") { el.innerHTML = `<div class="feedback" style="margin-bottom:14px;background:var(--hi)"><b style="color:var(--green)">Paiement confirmé.</b> ${o.items ? `Accès ouvert : ${o.items.map((i) => esc(i.title)).join(", ")}.` : ""} Référence ${esc(o.ref)}.</div>`; return; }
+  if (o.status === "failed" || o.status === "cancelled") { el.innerHTML = `<div class="feedback" style="margin-bottom:14px"><b style="color:var(--bad)">Paiement non abouti.</b> ${esc(o.message || "")} Tu peux réessayer.</div>`; return; }
+  el.innerHTML = `<div class="feedback" style="margin-bottom:14px"><b>Paiement en attente · ${money(o.amount)}</b><br>Confirme la demande sur ton téléphone. Référence ${esc(o.ref)}.</div>`;
 }
+
 async function pollOrder(ref) {
   const my = ++pollRun;
-  for (let i = 0; i < 60 && my === pollRun; i++) {
+  for (let i = 0; i < 100 && my === pollRun; i++) { // environ 5 minutes
     try {
       const o = await api(`/api/orders/${encodeURIComponent(ref)}`);
-      if (!location.hash.startsWith("#/abonnements")) return;
+      if (my !== pollRun) return;
       showOrder(o);
-      if (o.status !== "pending") { if (o.status === "paid") { toast("Paiement confirmé"); await sleep(1500); S.catalog = null; render(); } return; }
+      if (o.status !== "pending") {
+        if (o.status === "paid") { toast("Paiement confirmé"); S.catalog = null; if (location.hash.startsWith("#/abonnements")) { const keep = $("#layer").innerHTML; await render(); if (!$("#payModal")) $("#layer").innerHTML = keep; } }
+        return;
+      }
     } catch {}
     await sleep(3000);
+  }
+  if (my === pollRun && $("#payModal")) {
+    $("#payModal").querySelector(".pm-status").innerHTML = `Pas encore de réponse de l’opérateur. Si tu as validé le paiement, ton cours s’activera automatiquement dans quelques minutes. Sinon, ferme cette fenêtre et réessaie.`;
   }
 }
 
@@ -609,7 +690,7 @@ async function vAdmin() {
 document.addEventListener("click", async (e) => {
   const t = e.target.closest("button,[data-seek],a[data-close],a[data-subscribe]"); if (!t) return;
   const ds = t.dataset;
-  if (ds.close !== undefined || ds.retry !== undefined) { $("#layer").innerHTML = ""; if (ds.retry !== undefined) { Q.state = { i: 0, correct: 0, picked: null }; $("#quiz").innerHTML = quizHTML(); P.mode = "phrase"; playFrom(0); } if (t.tagName !== "A") return; }
+  if (ds.close !== undefined || ds.retry !== undefined) { if ($("#payModal") && payCtx) payCtx.dismissed = true; $("#layer").innerHTML = ""; if (ds.retrypay !== undefined) { pollRun++; payCtx = null; render(); return; } if (ds.retry !== undefined) { Q.state = { i: 0, correct: 0, picked: null }; $("#quiz").innerHTML = quizHTML(); P.mode = "phrase"; playFrom(0); } if (t.tagName !== "A") return; }
   if (ds.reload !== undefined) return render();
   if (ds.theme !== undefined) { const r = document.documentElement; const dark = r.dataset.theme ? r.dataset.theme === "dark" : matchMedia("(prefers-color-scheme: dark)").matches; r.dataset.theme = dark ? "light" : "dark"; store.set("theme", r.dataset.theme); return; }
   if (ds.logout !== undefined) { await api("/api/auth/logout", { method: "POST" }).catch(() => {}); S.me = null; S.catalog = null; stopPlay(); P.data = null; location.hash = "#/"; render(); return; }
@@ -633,7 +714,7 @@ document.addEventListener("click", async (e) => {
   if (ds.cart) { const id = +ds.cart; S.cart = S.cart.includes(id) ? S.cart.filter((x) => x !== id) : S.cart.concat(id); store.set("cart", S.cart); return render(); }
   if (ds.pm) { const ph = $("#f-phone"); if (ph) store.set("phone", ph.value); S.payMethod = ds.pm; return render(); }
   if (t.id === "payBtn") return pay(t);
-  if (ds.testpay) { t.disabled = true; try { const o = await api(`/api/orders/${encodeURIComponent(ds.testpay)}/test-result`, { method: "POST", body: { result: ds.result } }); showOrder(o); if (o.status === "paid") { toast("Paiement confirmé (test)"); await sleep(1200); S.catalog = null; render(); } } catch (err) { toast(err.message, true); } return; }
+  if (ds.testpay) { t.disabled = true; try { const o = await api(`/api/orders/${encodeURIComponent(ds.testpay)}/test-result`, { method: "POST", body: { result: ds.result } }); showOrder(o); if (o.status === "paid") { toast("Paiement confirmé (test)"); S.catalog = null; const keep = $("#layer").innerHTML; await render(); if (!$("#payModal")) $("#layer").innerHTML = keep; } } catch (err) { toast(err.message, true); } return; }
   // Studio
   if (ds.preview !== undefined) { return playSentence({ audio: ds.preview || null, text: ds.text }, ds.lang, 1); }
   if (ds.submit) { try { await api(`/api/studio/courses/${ds.submit}/submit`, { method: "POST" }); toast("Cours soumis à la revue"); render(); } catch (err) { toast(err.message, true); } return; }
