@@ -51,6 +51,30 @@ r.post("/api/auth/reset", async (ctx) => {
   ok(ctx, { ok: true });
 });
 
+// Récupération du compte administrateur, sans e-mail : active seulement si la variable
+// ADMIN_RECOVERY_CODE (12 caractères au moins) est définie dans Railway. À supprimer après usage.
+r.post("/api/auth/admin-recover", async (ctx) => {
+  A.throttle("recover:" + ctx.ip, 5, 60 * 60e3);
+  const code = process.env.ADMIN_RECOVERY_CODE || "";
+  if (code.length < 12) throw new HttpError(403, "La récupération n’est pas activée. Ajoute la variable ADMIN_RECOVERY_CODE dans Railway, puis réessaie.");
+  const b = await readJson(ctx.req);
+  const email = String(b.email || "").trim().toLowerCase();
+  const admins = (process.env.ADMIN_EMAILS || "").toLowerCase().split(",").map((s) => s.trim()).filter(Boolean);
+  const h = (x) => crypto.createHash("sha256").update(String(x)).digest();
+  if (!admins.includes(email) || !crypto.timingSafeEqual(h(b.code || ""), h(code))) {
+    audit(null, "admin_recover_failed", { email });
+    throw new HttpError(401, "Adresse ou code de récupération incorrect.");
+  }
+  if (String(b.password || "").length < 8) throw new HttpError(400, "Le mot de passe doit contenir au moins 8 caractères.");
+  const u = one("SELECT id FROM users WHERE email = ?", email);
+  if (!u) throw new HttpError(404, "Aucun compte avec cette adresse. Inscris-toi d’abord avec cette adresse.");
+  run("UPDATE users SET pass_hash = ?, role = 'admin', suspended = 0 WHERE id = ?", A.hashPassword(b.password), u.id);
+  run("DELETE FROM sessions WHERE user_id = ?", u.id);
+  audit(u.id, "admin_recovered");
+  A.createSession(ctx.res, u.id, ctx.secure);
+  ok(ctx, { ok: true });
+});
+
 // ---------- Catalogue ----------
 r.get("/api/catalog", (ctx) => {
   const subs = ctx.user ? new Map(B.activeSubs(ctx.user.id).map((s) => [s.course_id, s.end_at])) : new Map();

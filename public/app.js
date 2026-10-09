@@ -174,7 +174,7 @@ function paintNav() {
 const routes = [
   [/^#?\/?$/, vHome], [/^#\/cours$/, vCatalog], [/^#\/cours\/([\w-]+)$/, vCourse], [/^#\/lecon\/(\d+)$/, vLesson],
   [/^#\/parcours$/, vDash, "auth"], [/^#\/abonnements$/, vSubs], [/^#\/connexion$/, vLogin], [/^#\/inscription$/, vRegister],
-  [/^#\/reinitialiser\/([\w-]+)$/, vReset], [/^#\/studio$/, vStudio, "creator"], [/^#\/studio\/(\d+)$/, vStudioCourse, "creator"],
+  [/^#\/reinitialiser\/([\w-]+)$/, vReset], [/^#\/recuperation$/, vRecover], [/^#\/studio$/, vStudio, "creator"], [/^#\/studio\/(\d+)$/, vStudioCourse, "creator"],
   [/^#\/admin$/, vAdmin, "admin"],
 ];
 function parseHash() { const h = location.hash || "#/"; const [p, q] = h.split("?"); return { path: p, query: new URLSearchParams(q || "") }; }
@@ -564,7 +564,7 @@ function vLogin(query) {
     <form class="card" id="loginForm" data-next="${esc(next)}"><div class="field"><label for="l-email">Adresse électronique</label><input id="l-email" type="email" autocomplete="email" required></div>
     <div class="field"><label for="l-pw">Mot de passe</label><input id="l-pw" type="password" autocomplete="current-password" required minlength="8"></div>
     <button class="btn btn-primary" style="width:100%">Se connecter</button><p class="err" id="formErr" role="alert"></p>
-    <p class="muted" style="font-size:14px;margin-top:6px">Mot de passe oublié ? Écris à l’équipe NEXOMIA : elle t’enverra un lien de réinitialisation.</p></form>
+    <p class="muted" style="font-size:14px;margin-top:6px">Mot de passe oublié ? Écris à l’équipe NEXOMIA : elle t’enverra un lien de réinitialisation. <a href="#/recuperation">Administrateur ?</a></p></form>
     <p style="margin-top:16px;text-align:center">Pas encore de compte ? <a href="#/inscription?next=${encodeURIComponent(next)}">Créer un compte gratuit</a></p></div>`;
 }
 function vRegister(query) {
@@ -576,6 +576,14 @@ function vRegister(query) {
     <div class="field"><label for="r-pw">Mot de passe</label><input id="r-pw" type="password" autocomplete="new-password" required minlength="8"><span class="hint">8 caractères au moins. Une phrase de trois mots est idéale.</span></div>
     <button class="btn btn-primary" style="width:100%">Créer mon compte</button><p class="err" id="formErr" role="alert"></p></form>
     <p style="margin-top:16px;text-align:center">Déjà un compte ? <a href="#/connexion?next=${encodeURIComponent(next)}">Se connecter</a></p></div>`;
+}
+function vRecover() {
+  return `<div class="auth"><p class="eyebrow">Récupération administrateur</p><h1>Nouveau mot de passe</h1>
+    <p class="muted">Réservé à l’administrateur. Utilise le code de récupération défini dans Railway (variable ADMIN_RECOVERY_CODE).</p>
+    <form class="card" id="recoverForm" autocomplete="off"><div class="field"><label for="rc-email">Adresse électronique administrateur</label><input id="rc-email" type="email" autocomplete="username" required></div>
+    <div class="field"><label for="rc-code">Code de récupération</label><input id="rc-code" type="password" autocomplete="off" required minlength="12"></div>
+    <div class="field"><label for="rc-pw">Nouveau mot de passe</label><input id="rc-pw" type="password" autocomplete="new-password" required minlength="8"><span class="hint">8 caractères au moins. Note-le dans un endroit sûr.</span></div>
+    <button class="btn btn-primary" style="width:100%">Enregistrer le nouveau mot de passe</button><p class="err" id="formErr" role="alert"></p></form></div>`;
 }
 function vReset(token) {
   return `<div class="auth"><p class="eyebrow">Nouveau mot de passe</p><h1>Choisis un nouveau mot de passe</h1>
@@ -753,6 +761,7 @@ document.addEventListener("submit", async (e) => {
   try {
     if (f.id === "loginForm") { const r = await api("/api/auth/login", { method: "POST", body: { email: $("#l-email").value, password: $("#l-pw").value } }); S.me = r.user; S.catalog = null; location.hash = f.dataset.next; }
     else if (f.id === "registerForm") { const r = await api("/api/auth/register", { method: "POST", body: { name: $("#r-name").value, email: $("#r-email").value, phone: $("#r-phone").value, password: $("#r-pw").value } }); S.me = r.user; S.catalog = null; toast("Bienvenue dans NEXOMIA Academy"); location.hash = f.dataset.next; }
+    else if (f.id === "recoverForm") { await api("/api/auth/admin-recover", { method: "POST", body: { email: $("#rc-email").value, code: $("#rc-code").value, password: $("#rc-pw").value } }); await boot(true); toast("Mot de passe enregistré. Pense à supprimer ADMIN_RECOVERY_CODE dans Railway."); location.hash = "#/admin"; }
     else if (f.id === "resetForm") { await api("/api/auth/reset", { method: "POST", body: { token: f.dataset.token, password: $("#p-pw").value } }); await boot(true); toast("Mot de passe enregistré"); location.hash = "#/parcours"; }
     else if (f.id === "newCourse") { const r = await api("/api/studio/courses", { method: "POST", body: { domain: $("#n-domain").value, template: $("#n-template").value, title: $("#n-title").value, level: $("#n-level").value, description: $("#n-desc").value, lang: $("#n-lang").value, lessonTitle: $("#n-ltitle").value, lines: $("#n-lines").value } }); studioMeta = null; toast("Brouillon créé"); location.hash = `#/studio/${r.id}`; }
     else if (f.id === "courseMeta") { await api(`/api/studio/courses/${f.dataset.course}`, { method: "PUT", body: { title: $("#m-title").value, domain: $("#m-domain").value, level: $("#m-level").value, lang: $("#m-lang").value, description: $("#m-desc").value } }); toast("Informations enregistrées"); render(); }
