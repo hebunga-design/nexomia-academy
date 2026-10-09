@@ -78,6 +78,11 @@ async function pawaFetch(path, body) {
     });
     const text = await r.text();
     let json = null; try { json = JSON.parse(text); } catch {}
+    // Journal de diagnostic (sans jeton ni numéro complet).
+    const st = json && (json.status || (json.data && json.data.status));
+    const dst = json && json.data && json.data.status;
+    const fr = json && (json.failureReason || (json.data && json.data.failureReason));
+    console.log(`[pawapay] ${body ? "POST" : "GET"} ${path.replace(/[0-9a-f-]{36}/, ":id")} -> HTTP ${r.status} ${st || "-"}${dst && dst !== st ? "/" + dst : ""}${fr ? " " + (fr.failureCode || "") + " " + (fr.failureMessage || "") : ""}${!json ? " (réponse non JSON: " + text.slice(0, 120).replace(/\s+/g, " ") + ")" : ""}`);
     return { http: r.status, json };
   } finally { clearTimeout(t); }
 }
@@ -151,7 +156,8 @@ async function createOrder(user, { courseIds, method, phone }, baseUrl) {
         payer: { type: "MMO", accountDetails: { phoneNumber: tel, provider: providerCode } },
         metadata: [{ orderRef: ref }, { userId: String(user.id) }],
       });
-    } catch {
+    } catch (e) {
+      console.error("[pawapay] erreur réseau", e.message);
       run("UPDATE orders SET provider_message = ? WHERE id = ?", "Réponse incertaine : vérification en cours", orderId);
       return { ref, amount, status: "pending", message: "Nous vérifions ton paiement. Ne relance pas de paiement pour le moment." };
     }
@@ -228,6 +234,10 @@ async function verifyWithPawapay(order) {
   try { resp = await pawaFetch(`/v2/deposits/${encodeURIComponent(order.provider_order)}`); } catch { return order; }
   const j = resp.json;
   if (!j) return order;
+  if (resp.http === 401 || resp.http === 403) {
+    run("UPDATE orders SET provider_message = ? WHERE id = ?", "Clé pawaPay refusée : vérifier PAWAPAY_TOKEN (compte réel, pas sandbox).", order.id);
+    return one("SELECT * FROM orders WHERE id = ?", order.id);
+  }
   if (j.status === "NOT_FOUND") {
     // Jamais reçu par pawaPay : après 15 minutes, on considère l'envoi comme échoué.
     const ageMin = (Date.now() - new Date(order.created_at.replace(" ", "T") + "Z").getTime()) / 60000;
