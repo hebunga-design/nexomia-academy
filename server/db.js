@@ -164,6 +164,20 @@ ensureColumn("users", "onboarded", "INTEGER NOT NULL DEFAULT 0");
 ensureColumn("users", "ui_lang", "TEXT NOT NULL DEFAULT 'fr'");
 ensureColumn("users", "email_progress", "INTEGER NOT NULL DEFAULT 1");
 ensureColumn("users", "last_weekly", "TEXT");
+ensureColumn("orders", "gift", "INTEGER NOT NULL DEFAULT 0");
+ensureColumn("orders", "gift_to", "TEXT NOT NULL DEFAULT ''");
+ensureColumn("orders", "gift_msg", "TEXT NOT NULL DEFAULT ''");
+db.exec(`CREATE TABLE IF NOT EXISTS gift_codes (
+  code TEXT PRIMARY KEY,
+  order_id INTEGER NOT NULL UNIQUE REFERENCES orders(id),
+  buyer_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  courses TEXT NOT NULL,
+  to_name TEXT NOT NULL DEFAULT '',
+  message TEXT NOT NULL DEFAULT '',
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  redeemed_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  redeemed_at TEXT
+);`);
 db.exec(`
 CREATE TABLE IF NOT EXISTS xp_events (
   id INTEGER PRIMARY KEY,

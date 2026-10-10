@@ -351,6 +351,30 @@ r.put("/api/admin/reviews/:id/hidden", async (ctx) => {
   ok(ctx, { ok: true });
 });
 
+// ---------- Abonnements offerts ----------
+function giftView(g) {
+  const ids = JSON.parse(g.courses);
+  const buyer = g.buyer_id ? one("SELECT name FROM users WHERE id = ?", g.buyer_id) : null;
+  return { code: g.code, from: buyer ? String(buyer.name).trim().split(/\s+/)[0] : "", to_name: g.to_name, message: g.message, created_at: g.created_at, redeemed: !!g.redeemed_at,
+    courses: ids.map((id) => one("SELECT id, slug, title FROM courses WHERE id = ?", id)).filter(Boolean) };
+}
+r.get("/api/gifts/:code", (ctx) => {
+  A.throttle("giftview:" + ctx.ip, 30, 10 * 60e3);
+  const g = one("SELECT * FROM gift_codes WHERE code = ?", String(ctx.params.code || "").trim().toUpperCase());
+  if (!g) throw new HttpError(404, "Ce code cadeau n’existe pas. Vérifie qu’il est bien recopié.");
+  ok(ctx, { gift: giftView(g) });
+});
+r.post("/api/gifts/redeem", async (ctx) => {
+  A.requireUser(ctx);
+  A.throttle("giftredeem:" + ctx.user.id, 10, 60 * 60e3);
+  const b = await readJson(ctx.req);
+  ok(ctx, B.redeemGift(ctx.user, b.code));
+});
+r.get("/api/me/gifts", (ctx) => {
+  A.requireUser(ctx);
+  ok(ctx, { gifts: all("SELECT * FROM gift_codes WHERE buyer_id = ? ORDER BY created_at DESC LIMIT 30", ctx.user.id).map(giftView) });
+});
+
 // ---------- Test de niveau ----------
 r.get("/api/placement/:slug", (ctx) => {
   const qs = PLACEMENT[ctx.params.slug];

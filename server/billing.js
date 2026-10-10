@@ -114,7 +114,7 @@ async function flexFetch(url, body) {
 // ---------- Commandes ----------
 function newRef() { return "NX-" + Date.now().toString(36).toUpperCase() + "-" + crypto.randomBytes(3).toString("hex").toUpperCase(); }
 
-async function createOrder(user, { courseIds, method, phone }, baseUrl) {
+async function createOrder(user, { courseIds, method, phone, gift, giftTo, giftMsg }, baseUrl) {
   const provider = providerName();
   if (provider === "none") throw new HttpError(503, "Les paiements ne sont pas encore ouverts. Réessaie bientôt.");
   if (!METHODS[method]) throw new HttpError(400, "Choisis un moyen de paiement.");
@@ -131,7 +131,8 @@ async function createOrder(user, { courseIds, method, phone }, baseUrl) {
   const parts = splitTotal(courses.length, amount);
   const ref = newRef();
   const orderId = tx(() => {
-    const r = run("INSERT INTO orders(ref, user_id, amount_usd, currency, method, phone, provider) VALUES(?, ?, ?, 'USD', ?, ?, ?)", ref, user.id, amount, method, tel, provider);
+    const r = run("INSERT INTO orders(ref, user_id, amount_usd, currency, method, phone, provider, gift, gift_to, gift_msg) VALUES(?, ?, ?, 'USD', ?, ?, ?, ?, ?, ?)", ref, user.id, amount, method, tel, provider,
+      gift ? 1 : 0, String(giftTo || "").trim().slice(0, 60), String(giftMsg || "").trim().slice(0, 300));
     const oid = Number(r.lastInsertRowid);
     courses.forEach((c, i) => run("INSERT INTO order_items(order_id, course_id, unit_price) VALUES(?, ?, ?)", oid, c.id, parts[i]));
     return oid;
@@ -211,12 +212,50 @@ function failOrder(orderId, message) {
 }
 
 // Activation idempotente : seule la transition pending -> paid crée les périodes.
+// Code cadeau lisible (sans 0/O, 1/I) : NX-CADEAU-XXXX-XXXX
+const GIFT_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+function newGiftCode() {
+  for (;;) {
+    const b = crypto.randomBytes(8); let c = "";
+    for (let i = 0; i < 8; i++) c += GIFT_ALPHABET[b[i] % GIFT_ALPHABET.length];
+    const code = `NX-CADEAU-${c.slice(0, 4)}-${c.slice(4)}`;
+    if (!one("SELECT 1 FROM gift_codes WHERE code = ?", code)) return code;
+  }
+}
+// Active un code cadeau pour la personne connectée : un mois par cours, à la suite d'un abonnement en cours.
+function redeemGift(user, code) {
+  return tx(() => {
+    const g = one("SELECT * FROM gift_codes WHERE code = ?", String(code || "").trim().toUpperCase());
+    if (!g) throw new HttpError(404, "Ce code cadeau n’existe pas. Vérifie qu’il est bien recopié.");
+    if (g.redeemed_at) throw new HttpError(409, "Ce code cadeau a déjà été utilisé.");
+    const now = new Date().toISOString();
+    const ids = JSON.parse(g.courses);
+    for (const cid of ids) {
+      const cur = activeEnd(user.id, cid);
+      const start = cur && cur > now ? cur : now;
+      run("INSERT INTO periods(user_id, course_id, order_id, start_at, end_at, source) VALUES(?, ?, NULL, ?, ?, 'gift')", user.id, cid, start, addOneMonth(start));
+    }
+    run("UPDATE gift_codes SET redeemed_by = ?, redeemed_at = ? WHERE code = ?", user.id, now, g.code);
+    audit(user.id, "gift_redeemed", { code: g.code });
+    return { courses: ids.map((id) => one("SELECT id, slug, title FROM courses WHERE id = ?", id)).filter(Boolean) };
+  });
+}
+function giftOf(orderId) { return one("SELECT code, redeemed_at FROM gift_codes WHERE order_id = ?", orderId); }
+
 function markPaid(orderId, source = "payment") {
   return tx(() => {
     const now = new Date().toISOString();
     const r = run("UPDATE orders SET status = 'paid', paid_at = ? WHERE id = ? AND status = 'pending'", now, orderId);
     if (r.changes !== 1) return false;
-    const o = one("SELECT user_id FROM orders WHERE id = ?", orderId);
+    const o = one("SELECT user_id, gift, gift_to, gift_msg FROM orders WHERE id = ?", orderId);
+    if (o.gift) {
+      // Abonnement offert : on crée un code cadeau au lieu d'activer les cours pour l'acheteur.
+      const ids = all("SELECT course_id FROM order_items WHERE order_id = ?", orderId).map((x) => x.course_id);
+      run("INSERT OR IGNORE INTO gift_codes(code, order_id, buyer_id, courses, to_name, message) VALUES(?, ?, ?, ?, ?, ?)", newGiftCode(), orderId, o.user_id, JSON.stringify(ids), o.gift_to, o.gift_msg);
+      audit(o.user_id, "gift_paid", { orderId, source });
+      setImmediate(() => { try { require("./mail").sendGift(orderId).catch(() => {}); } catch {} });
+      return true;
+    }
     for (const it of all("SELECT course_id FROM order_items WHERE order_id = ?", orderId)) {
       const cur = activeEnd(o.user_id, it.course_id);
       const start = cur && cur > now ? cur : now; // renouvellement anticipé : on ajoute à la suite
@@ -293,7 +332,9 @@ async function orderStatus(user, ref) {
 }
 function publicOrder(o) {
   const items = all("SELECT oi.course_id, oi.unit_price, c.title FROM order_items oi JOIN courses c ON c.id = oi.course_id WHERE oi.order_id = ?", o.id);
-  return { ref: o.ref, status: o.status, amount: o.amount_usd, currency: o.currency, method: METHODS[o.method] || o.method, provider: o.provider, message: o.provider_message, created_at: o.created_at, paid_at: o.paid_at, items };
+  const g = o.gift && o.status === "paid" ? giftOf(o.id) : null;
+  return { ref: o.ref, status: o.status, amount: o.amount_usd, currency: o.currency, method: METHODS[o.method] || o.method, provider: o.provider, message: o.provider_message, created_at: o.created_at, paid_at: o.paid_at, items,
+    gift: !!o.gift, gift_to: o.gift ? o.gift_to : undefined, gift_code: g ? g.code : null, gift_redeemed: g ? !!g.redeemed_at : false };
 }
 
 // Rapprochement périodique des paiements FlexPay en attente (48 h max).
@@ -308,4 +349,4 @@ function startReconciliation() {
   }, 2 * 60e3).unref();
 }
 
-module.exports = { addOneMonth, activeEnd, activeSubs, createOrder, orderStatus, publicOrder, markPaid, failOrder, verifyWithFlexpay, verifyWithPawapay, verifyOrder, startReconciliation, providerName, flexpayEnabled, pawapayEnabled, testModeEnabled, availableMethods, METHODS };
+module.exports = { redeemGift, giftOf, addOneMonth, activeEnd, activeSubs, createOrder, orderStatus, publicOrder, markPaid, failOrder, verifyWithFlexpay, verifyWithPawapay, verifyOrder, startReconciliation, providerName, flexpayEnabled, pawapayEnabled, testModeEnabled, availableMethods, METHODS };

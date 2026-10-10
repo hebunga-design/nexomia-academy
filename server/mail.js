@@ -106,6 +106,22 @@ async function sendReset(user, token) {
   return send({ to: user.email, name: user.name, subject: "Ton nouveau mot de passe NEXOMIA Academy", html, text: `Choisis ton nouveau mot de passe (lien valable 48 h) : ${url}` });
 }
 
+async function sendGift(orderId) {
+  const o = one("SELECT o.id, o.gift_to, u.id AS uid, u.name, u.email FROM orders o JOIN users u ON u.id = o.user_id WHERE o.id = ?", orderId);
+  const g = one("SELECT code, courses FROM gift_codes WHERE order_id = ?", orderId);
+  if (!o || !g) return { sent: false };
+  const titles = JSON.parse(g.courses).map((id) => (one("SELECT title FROM courses WHERE id = ?", id) || {}).title).filter(Boolean).join(", ");
+  const url = `${baseUrl()}/#/cadeau/${g.code}`;
+  const html = layout({ preheader: "Ton code cadeau est prêt à être envoyé.", title: "Merci pour ton cadeau !", userId: null,
+    body: p(`${esc(first(o.name))}, ton abonnement offert${o.gift_to ? ` à <b>${esc(o.gift_to)}</b>` : ""} est payé : <b>${esc(titles)}</b>, un mois.`)
+      + `<div style="margin:6px 0 16px;padding:18px;border-radius:14px;background:#E3F0D9;text-align:center"><div style="font-size:12px;letter-spacing:.14em;color:#56646E">CODE CADEAU</div><div style="font-family:monospace;font-size:24px;font-weight:800;color:#1E2D3B;margin-top:4px">${esc(g.code)}</div></div>`
+      + p("Envoie ce lien à la personne : elle crée son compte gratuit, et son mois de cours démarre dès qu’elle active le code.")
+      + p(`<a href="${url}" style="color:#2F7D32;word-break:break-all">${url}</a>`)
+      + p(`<span style="color:#56646E;font-size:14px">Merci : chaque abonnement soutient aussi nos actions auprès des jeunes vulnérables.</span>`),
+    cta: "Voir mon cadeau", ctaUrl: url });
+  return send({ to: o.email, name: o.name, subject: "Ton code cadeau NEXOMIA Academy", html, text: `Merci ! Code cadeau : ${g.code}. Lien à envoyer : ${url}` });
+}
+
 // Bilan de la semaine écoulée (7 derniers jours).
 function weeklyData(u) {
   const xpWeek = one("SELECT COALESCE(SUM(amount),0) AS x FROM xp_events WHERE user_id = ? AND day >= date('now','-6 days')", u.id).x;
@@ -169,4 +185,4 @@ function startScheduler() {
 }
 function status() { return { provider: provider(), from: sender(), recipients: recipients().length, lastWeek: getSetting("mail:weekly", null), job }; }
 
-module.exports = { provider, send, sendWelcome, sendCertificate, sendReset, sendWeekly, runWeekly, startScheduler, status, checkUnsub, unsubUrl };
+module.exports = { sendGift, provider, send, sendWelcome, sendCertificate, sendReset, sendWeekly, runWeekly, startScheduler, status, checkUnsub, unsubUrl };

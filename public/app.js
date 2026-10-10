@@ -184,7 +184,7 @@ const routes = [
   [/^#\/parcours$/, vDash, "auth"], [/^#\/abonnements$/, vSubs], [/^#\/connexion$/, vLogin], [/^#\/inscription$/, vRegister],
   [/^#\/reinitialiser\/([\w-]+)$/, vReset], [/^#\/recuperation$/, vRecover], [/^#\/studio$/, vStudio, "creator"], [/^#\/studio\/(\d+)$/, vStudioCourse, "creator"],
   [/^#\/admin$/, vAdmin, "admin"],
-  [/^#\/test-niveau\/([\w-]+)$/, vPlacement], [/^#\/bienvenue$/, vWelcome, "auth"], [/^#\/certificat\/([\w-]+)$/, vCertificate], [/^#\/revision$/, vReview, "auth"], [/^#\/suggestions$/, vSuggestions], [/^#\/mot-de-passe-oublie$/, vForgot],
+  [/^#\/test-niveau\/([\w-]+)$/, vPlacement], [/^#\/bienvenue$/, vWelcome, "auth"], [/^#\/certificat\/([\w-]+)$/, vCertificate], [/^#\/revision$/, vReview, "auth"], [/^#\/suggestions$/, vSuggestions], [/^#\/cadeau(?:\/([\w-]+))?$/, vGift], [/^#\/mot-de-passe-oublie$/, vForgot],
 ];
 function parseHash() { const h = location.hash || "#/"; const [p, q] = h.split("?"); return { path: p, query: new URLSearchParams(q || "") }; }
 let renderId = 0;
@@ -192,6 +192,7 @@ async function render() {
   const my = ++renderId; S.after = null;
   const { path, query } = parseHash();
   if (!path.startsWith("#/lecon/") && P.data && !P.playing) P.data = null;
+  if (path !== "#/abonnements") S.gift = false;
   paintNav(); paintPlayer();
   const app = $("#app");
   const r = routes.find(([re]) => re.test(path));
@@ -215,7 +216,7 @@ async function render() {
     app.innerHTML = `<div class="empty"><p><b>${esc(e.message)}</b></p><p style="margin-top:12px"><button class="btn btn-ghost btn-sm" data-reload>Réessayer</button></p></div>`;
   }
 }
-const footer = () => `<footer><div class="wrap" style="padding:0"><span><b style="color:var(--ink)">NEXOMIA</b> · Former · Créer · Transformer · Lubumbashi, RDC</span><a href="#/suggestions">Boîte à suggestions</a><span>Paiements : M-Pesa · Airtel Money · Orange Money${S.methods.includes("card") ? " · Carte" : ""}</span></div></footer>`;
+const footer = () => `<footer><div class="wrap" style="padding:0"><span><b style="color:var(--ink)">NEXOMIA</b> · Former · Créer · Transformer · Lubumbashi, RDC</span><span style="display:flex;gap:16px;flex-wrap:wrap"><a href="#/abonnements?offrir=1">Offrir un abonnement</a><a href="#/cadeau">J’ai un code cadeau</a><a href="#/suggestions">Boîte à suggestions</a></span><span>Paiements : M-Pesa · Airtel Money · Orange Money${S.methods.includes("card") ? " · Carte" : ""}</span></div></footer>`;
 
 async function loadCatalog(force) { if (!S.catalog || force) { const d = await api("/api/catalog"); S.catalog = d.courses; S.pricing = d.pricing; } return S.catalog; }
 
@@ -244,7 +245,8 @@ function priceBlock() {
       <div class="examples">${ex.map(([n, t]) => `<div><span>${n} cours${n > 1 ? ` · soit ${money(t / n)} par cours` : ""}</span><b>${money(t)} / mois</b></div>`).join("")}</div>
       <div class="pay"><span class="chip">M-Pesa</span><span class="chip">Airtel Money</span><span class="chip">Orange Money</span>${S.methods.includes("card") ? `<span class="chip">Visa · Mastercard</span>` : ""}</div></div>
     <div><ul class="ticks"><li>Tous les niveaux et toutes les leçons du cours choisi</li><li>Audios téléchargeables pour écouter sans données</li><li>Exercices corrigés et révisions</li><li>Accompagnement par l’équipe NEXOMIA et groupes de pratique</li><li>Sans engagement : tu renouvelles quand tu veux</li></ul>
-      <a class="btn btn-primary" style="margin-top:20px;width:100%" href="#/abonnements">Choisir mes cours</a></div>
+      <a class="btn btn-primary" style="margin-top:20px;width:100%" href="#/abonnements">Choisir mes cours</a>
+      <a class="btn btn-ghost" style="margin-top:10px;width:100%" href="#/abonnements?offrir=1">🎁 Offrir un abonnement</a></div>
   </div>`;
 }
 async function vHome() {
@@ -658,6 +660,29 @@ async function adminFeedback() {
     </tbody></table></div>`;
 }
 
+/* ================= Abonnements offerts ================= */
+const giftLink = (code) => `${location.origin}/#/cadeau/${code}`;
+function giftShareUrl(code, to) {
+  const t = `${to ? to + ", j" : "J"}e t’offre un mois de cours sur NEXOMIA Academy 🎁\n\n1. Ouvre ce lien : ${giftLink(code)}\n2. Crée ton compte gratuit\n3. Active ton cadeau (code ${code})\n\nBon apprentissage !`;
+  return "https://wa.me/?text=" + encodeURIComponent(t);
+}
+async function vGift(code) {
+  if (!code) return `<div class="auth"><p class="eyebrow">Abonnement offert</p><h1>Active ton cadeau</h1><p class="muted">Saisis le code reçu (par exemple NX-CADEAU-AB12-CD34).</p>
+    <form class="card" id="giftLookup"><div class="field"><label for="gc-in">Code cadeau</label><input id="gc-in" required autocapitalize="characters" autocomplete="off" placeholder="NX-CADEAU-…" style="text-transform:uppercase;font-family:var(--f-mono)"></div>
+    <button class="btn btn-primary" style="width:100%">Continuer</button><p class="err" id="formErr" role="alert"></p></form>
+    <p style="margin-top:16px;text-align:center">Tu veux offrir un abonnement ? <a href="#/abonnements?offrir=1">Offrir un mois de cours</a></p></div>`;
+  const { gift: g } = await api(`/api/gifts/${encodeURIComponent(code)}`);
+  return `<div class="giftpage card">${motif(64)}
+    <p class="eyebrow" style="margin-top:14px">Un cadeau pour toi${g.to_name ? `, ${esc(g.to_name)}` : ""}</p>
+    <h1 style="font-size:clamp(28px,5vw,42px);margin:8px 0">${g.from ? `${esc(g.from)} t’offre` : "On t’offre"} un mois de cours 🎁</h1>
+    ${g.message ? `<blockquote class="giftmsg" data-noi18n>« ${esc(g.message)} »</blockquote>` : ""}
+    <div class="pm-box" style="text-align:left"><b>Cours offerts :</b> ${g.courses.map((c) => esc(c.title)).join(", ")} · 1 mois chacun</div>
+    ${g.redeemed ? `<p class="note" style="margin-top:14px">Ce cadeau a déjà été activé.</p><a class="btn btn-ghost" style="margin-top:12px" href="#/cours">Voir les cours</a>`
+      : S.me ? `<button class="btn btn-primary" style="margin-top:16px;width:100%" data-giftredeem="${esc(g.code)}">Activer mon cadeau</button><p class="muted" style="font-size:13px;margin-top:8px">Connecté en tant que ${esc(S.me.name)}.</p>`
+      : `<div style="display:grid;gap:10px;margin-top:16px"><a class="btn btn-primary" href="#/inscription?next=${encodeURIComponent("#/cadeau/" + g.code)}">Créer mon compte gratuit et activer</a><a class="btn btn-ghost" href="#/connexion?next=${encodeURIComponent("#/cadeau/" + g.code)}">J’ai déjà un compte</a></div>`}
+    <p class="muted" style="font-size:13px;margin-top:16px">Chaque abonnement NEXOMIA soutient aussi nos actions auprès des jeunes vulnérables.</p></div>`;
+}
+
 /* ================= Test de niveau ================= */
 const LEVELS = ["A1", "A2", "B1", "B2", "C1", "C2"];
 const LEVEL_FR = { A1: "Débutant", A2: "Élémentaire", B1: "Intermédiaire", B2: "Intermédiaire avancé", C1: "Avancé", C2: "Maîtrise" };
@@ -865,7 +890,7 @@ async function vDash() {
       ${d.board.length ? `<ol class="board">${d.board.map((b) => `<li class="${b.me ? "me" : ""}"><span class="rk">${b.rank || "–"}</span><span class="nm">${esc(b.me ? b.name + " (toi)" : b.name)}</span><b>${b.xp}</b></li>`).join("")}</ol>` : `<p class="muted" style="margin-top:8px">Sois le premier à gagner des points cette semaine.</p>`}</div>
     <div class="card"><h3 style="font-size:20px">Mes abonnements</h3>
       ${d.subs.length ? d.subs.map((s) => `<p style="margin-top:10px;display:flex;justify-content:space-between;gap:10px"><b>${esc(s.title)}</b><span class="muted">jusqu’au ${fmtD(s.end_at)}</span></p>`).join("") : `<p class="muted" style="margin-top:8px">Aucun abonnement. Les premières leçons restent gratuites.</p>`}
-      <a class="btn btn-ghost btn-sm" style="margin-top:14px" href="#/abonnements">Gérer mes abonnements</a></div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:14px"><a class="btn btn-ghost btn-sm" href="#/abonnements">Gérer mes abonnements</a><a class="btn btn-ghost btn-sm" href="#/abonnements?offrir=1">🎁 Offrir</a></div></div>
     <div class="card"><h3 style="font-size:20px">Besoin d’aide ?</h3><p class="muted" style="font-size:15px;margin-top:6px">L’équipe NEXOMIA répond sous deux jours ouvrables. Ton rôle : <b style="color:var(--ink)">${ROLE_FR[S.me.role]}</b>.</p><a class="btn btn-ghost btn-sm" style="margin-top:12px" href="#/suggestions">Envoyer une suggestion</a></div>
     <div class="card"><h3 style="font-size:20px">Mes e-mails</h3>
       <label class="switch"><input type="checkbox" data-emailprog ${S.me.email_progress ? "checked" : ""}><span class="sw" aria-hidden="true"></span><span>Recevoir mon bilan de progression chaque lundi</span></label>
@@ -884,19 +909,26 @@ async function vSubs(query) {
   const total = priceFor(cart.length), single = S.pricing.tiers[0] * cart.length;
   const ref = query.get("ref");
   if (ref && S.me) setTimeout(() => pollOrder(ref), 50);
+  if (query.get("offrir") === "1") S.gift = true;
+  const gifts = S.me ? (await api("/api/me/gifts").catch(() => ({ gifts: [] }))).gifts : [];
   if (!S.methods.includes(S.payMethod)) S.payMethod = S.methods[0];
-  return `<p class="eyebrow">Abonnements · ${money(S.pricing.tiers[0])} par cours et par mois</p><h1 style="font-size:clamp(30px,4vw,44px);margin:8px 0 6px">Choisis tes cours</h1>
+  return `<p class="eyebrow">Abonnements · ${money(S.pricing.tiers[0])} par cours et par mois</p><h1 style="font-size:clamp(30px,4vw,44px);margin:8px 0 6px">${S.gift ? "Offre un abonnement" : "Choisis tes cours"}</h1>
+  <div class="seg giftseg" role="group" aria-label="Pour qui ?"><button data-giftmode="0" aria-pressed="${!S.gift}">Pour moi</button><button data-giftmode="1" aria-pressed="${!!S.gift}">🎁 Offrir à quelqu’un</button></div>
   <p class="muted" style="max-width:62ch">Chaque cours est un abonnement séparé, avec sa propre date de fin. Plus tu prends de cours ensemble, moins chaque cours coûte : ${[2, 3].map((n) => `${n} cours = ${money(priceFor(n))}`).join(", ")}.</p>
   <div class="dash" style="margin-top:22px"><div class="card">
     ${S.payments === "test" ? `<div class="demo-banner"><b>Mode test.</b> Les paiements sont simulés : aucun argent n’est prélevé. Le mode réel s’active dès que le prestataire de paiement est configuré.</div>` : ""}
     <div id="payState"></div>
-    <h3 style="font-size:20px">1. Cours</h3>
-    <div class="cartlist" role="group" aria-label="Cours à payer">${courses.map((c) => { const on = S.cart.includes(c.id); return `<button class="citem" data-cart="${c.id}" aria-pressed="${on}"><span class="box">${on ? "✓" : ""}</span><span style="min-width:0"><b>${esc(c.title)}</b><br><small class="muted">${esc(c.domain)} · ${c.subscribed_until ? `abonné jusqu’au ${fmtD(c.subscribed_until)} · prolonger` : esc(c.level)}</small></span><span class="pricetag">${money(S.pricing.tiers[0])}</span></button>`; }).join("")}</div>
-    <h3 style="font-size:20px;margin-top:8px">2. Moyen de paiement</h3>
+    ${S.gift ? `<div class="giftnote"><b>Comment ça marche ?</b> Tu choisis les cours et tu paies. Tu reçois un <b>code cadeau</b> à envoyer par WhatsApp ou SMS. La personne crée son compte gratuit, active le code, et son mois de cours démarre. Ton cadeau soutient aussi nos actions auprès des jeunes vulnérables.</div>` : ""}
+    <h3 style="font-size:20px">1. ${S.gift ? "Cours à offrir" : "Cours"}</h3>
+    <div class="cartlist" role="group" aria-label="Cours à payer">${courses.map((c) => { const on = S.cart.includes(c.id); return `<button class="citem" data-cart="${c.id}" aria-pressed="${on}"><span class="box">${on ? "✓" : ""}</span><span style="min-width:0"><b>${esc(c.title)}</b><br><small class="muted">${esc(c.domain)} · ${c.subscribed_until && !S.gift ? `abonné jusqu’au ${fmtD(c.subscribed_until)} · prolonger` : esc(c.level)}</small></span><span class="pricetag">${money(S.pricing.tiers[0])}</span></button>`; }).join("")}</div>
+    ${S.gift ? `<h3 style="font-size:20px;margin-top:8px">2. Pour qui ?</h3>
+      <div class="two"><div class="field"><label for="g-to">Prénom de la personne (facultatif)</label><input id="g-to" maxlength="60" value="${esc(S.giftTo || "")}" placeholder="Par exemple : Esther"></div>
+      <div class="field"><label for="g-msg">Petit mot (facultatif)</label><input id="g-msg" maxlength="300" value="${esc(S.giftMsg || "")}" placeholder="Bon courage pour ton anglais !"></div></div>` : ""}
+    <h3 style="font-size:20px;margin-top:8px">${S.gift ? "3" : "2"}. Moyen de paiement</h3>
     <div class="methods" role="group" aria-label="Moyen de paiement">${Object.entries(METHODS).filter(([k]) => S.methods.includes(k)).map(([k, v]) => `<button class="method" data-pm="${k}" aria-pressed="${S.payMethod === k}">${v[0]}<small>${v[1]}</small></button>`).join("")}</div>
     ${S.payMethod === "card" ? `<p class="muted" style="font-size:15px">Tu seras redirigé vers la page sécurisée du prestataire pour saisir ta carte. NEXOMIA ne voit jamais ton numéro de carte.</p>`
       : `<div class="field"><label for="f-phone">Numéro ${esc(METHODS[S.payMethod][0])}</label><input id="f-phone" inputmode="tel" autocomplete="tel" placeholder="+243 81 234 5678" value="${esc(store.get("phone", S.me && S.me.phone || ""))}"><span class="hint">Tu recevras une demande de paiement sur ce téléphone : valide-la avec ton code secret, uniquement sur ton téléphone. Ne communique jamais ton code PIN à personne.</span></div>`}
-    ${S.me ? `<button class="btn btn-primary" style="width:100%;margin-top:8px" id="payBtn" ${cart.length ? "" : "disabled"}>${cart.length ? `Payer ${money(total)}` : "Choisis au moins un cours"}</button>`
+    ${S.me ? `<button class="btn btn-primary" style="width:100%;margin-top:8px" id="payBtn" ${cart.length ? "" : "disabled"}>${cart.length ? `${S.gift ? "Payer et offrir" : "Payer"} ${money(total)}` : "Choisis au moins un cours"}</button>`
       : `<a class="btn btn-primary" style="width:100%;margin-top:8px" href="#/connexion?next=${encodeURIComponent("#/abonnements")}">Se connecter pour payer</a>`}
   </div>
   <div style="display:grid;gap:18px;align-content:start;min-width:0">
@@ -906,7 +938,8 @@ async function vSubs(query) {
         ${total < single ? `<span style="color:var(--green);font-weight:700">Réduction ${cart.length} cours</span><b style="color:var(--green)">−${money(single - total)}</b>` : ""}
         <span style="border-top:1px solid var(--line);padding-top:8px;font-weight:700">Total</span><b style="border-top:1px solid var(--line);padding-top:8px;font-size:20px">${money(total)}</b>
       </div>
-      <p class="muted" style="font-size:14px;margin-top:14px">Un mois à partir de la confirmation. Si tu es déjà abonné, le mois s’ajoute à la suite. Le renouvellement est manuel : nous te rappelons avant chaque échéance.</p></div>
+      <p class="muted" style="font-size:14px;margin-top:14px">${S.gift ? "Un mois offert par cours, qui démarre quand la personne active son code. Le code reste valable tant qu’il n’a pas été utilisé." : "Un mois à partir de la confirmation. Si tu es déjà abonné, le mois s’ajoute à la suite. Le renouvellement est manuel : nous te rappelons avant chaque échéance."}</p></div>
+    ${gifts.length ? `<div class="card"><h3 style="font-size:20px">Mes cadeaux</h3><div class="slist" style="margin-top:12px">${gifts.map((g) => `<div class="sitem"><div style="min-width:0"><b class="mono">${esc(g.code)}</b><br><small class="muted">${g.to_name ? `Pour ${esc(g.to_name)} · ` : ""}${g.courses.map((c) => esc(c.title)).join(", ")}</small></div>${g.redeemed ? `<span class="status st-pub">Activé</span>` : `<button class="btn btn-ghost btn-sm" data-giftshare="${esc(g.code)}" data-giftto="${esc(g.to_name)}">Envoyer</button>`}</div>`).join("")}</div></div>` : ""}
     ${S.me ? `<div class="card"><h3 style="font-size:20px">Mes abonnements</h3>
       ${mine.subs.length ? `<div class="slist" style="margin-top:12px">${mine.subs.map((s) => `<div class="sitem"><div><b>${esc(s.title)}</b><br><small class="muted">Jusqu’au ${fmtD(s.end_at)}</small></div><span class="status st-pub">Actif</span></div>`).join("")}</div>` : `<p class="muted" style="font-size:15px;margin-top:8px">Aucun abonnement actif.</p>`}
       ${mine.orders.length ? `<h4 style="margin:16px 0 8px">Historique des paiements</h4><div class="slist">${mine.orders.slice(0, 8).map((o) => `<div class="sitem"><div style="min-width:0"><b>${money(o.amount)}</b> · ${esc(o.method)}<br><small class="muted">${fmtD(o.created_at)} · ${o.items.map((i) => esc(i.title)).join(", ")} · réf. ${esc(o.ref)}</small></div><span class="status ${o.status === "paid" ? "st-pub" : o.status === "pending" ? "st-review" : "st-draft"}">${{ paid: "Payé", pending: "En attente", failed: "Échoué", cancelled: "Expiré" }[o.status]}</span></div>`).join("")}</div>` : ""}
@@ -921,6 +954,7 @@ async function pay(btn) {
   const ph = $("#f-phone");
   if (ph && ph.value.replace(/\D/g, "").length < 9) { ph.focus(); $("#payState").innerHTML = `<div class="feedback" style="color:var(--bad);margin-bottom:14px"><b>Saisis ton numéro ${esc(OPERATOR[S.payMethod])} complet, par exemple 0970 000 000.</b></div>`; ph.scrollIntoView({ block: "center", behavior: "smooth" }); return; }
   const body = { courseIds: S.cart, method: S.payMethod, phone: ph ? ph.value : undefined };
+  if (S.gift) { body.gift = true; body.giftTo = ($("#g-to") || {}).value || ""; body.giftMsg = ($("#g-msg") || {}).value || ""; S.giftTo = body.giftTo; S.giftMsg = body.giftMsg; }
   if (ph) store.set("phone", ph.value);
   const label = btn.innerHTML;
   btn.disabled = true; btn.classList.add("is-loading");
@@ -945,6 +979,17 @@ function openPayModal(o) {
   if (!m) { layer.innerHTML = `<div class="overlay" id="ov"><div class="celebrate paymodal" id="payModal" role="dialog" aria-modal="true" aria-live="polite"></div></div>`; m = $("#payModal"); }
   const op = OPERATOR[(payCtx && payCtx.method) || S.payMethod] || "Mobile Money";
   const detected = o.method && o.method !== op && /M-Pesa|Airtel|Orange/.test(o.method) ? o.method : op;
+  if (o.status === "paid" && o.gift) {
+    m.dataset.state = "paid";
+    m.innerHTML = `<div class="pm-icon ok" aria-hidden="true">🎁</div>
+      <h2>Cadeau payé, merci !</h2>
+      <p class="muted">${money(o.amount)} reçus via ${esc(o.method || detected)}. Voici le code à envoyer${o.gift_to ? ` à ${esc(o.gift_to)}` : ""} :</p>
+      ${o.gift_code ? `<div class="giftcode" data-noi18n>${esc(o.gift_code)}</div>` : `<p class="muted">Le code arrive dans quelques secondes. Tu le retrouveras aussi dans « Mes cadeaux ».</p>`}
+      <div class="pm-box"><b>Cours offerts :</b> ${o.items.map((i) => esc(i.title)).join(", ")} · 1 mois</div>
+      <div class="pm-actions">${o.gift_code ? `<a class="btn btn-primary" href="${esc(giftShareUrl(o.gift_code, o.gift_to))}" target="_blank" rel="noopener">Envoyer par WhatsApp</a><button class="btn btn-ghost" data-copy="${esc(giftLink(o.gift_code))}">Copier le lien</button>` : ""}<button class="btn btn-ghost" data-close>Fermer</button></div>`;
+    S.gift = false; S.giftTo = ""; S.giftMsg = "";
+    return;
+  }
   if (o.status === "paid") {
     m.dataset.state = "paid";
     m.innerHTML = `<div class="pm-icon ok" aria-hidden="true">✓</div>
@@ -1244,6 +1289,9 @@ document.addEventListener("click", async (e) => {
   if (ds.rvsay !== undefined) { const it = RV.items[RV.i]; return playSentence({ text: it.item }, it.lang, 1); }
   if (ds.rvgrade !== undefined) return reviewGrade(ds.rvgrade === "1");
   if (ds.print !== undefined) { window.print(); return; }
+  if (ds.giftmode !== undefined) { S.gift = ds.giftmode === "1"; if (!S.gift && location.hash.includes("offrir")) { location.hash = "#/abonnements"; return; } return render(); }
+  if (ds.giftshare) { window.open(giftShareUrl(ds.giftshare, ds.giftto), "_blank", "noopener"); return; }
+  if (ds.giftredeem) { t.disabled = true; try { const r = await api("/api/gifts/redeem", { method: "POST", body: { code: ds.giftredeem } }); S.catalog = null; toast("Cadeau activé ! Bon apprentissage."); location.hash = r.courses[0] ? `#/cours/${r.courses[0].slug}` : "#/parcours"; } catch (err) { toast(err.message, true); t.disabled = false; } return; }
   if (ds.cmreply) { CM.replyTo = CM.replyTo === +ds.cmreply ? null : +ds.cmreply; paintComments(); const ta = $(`#cmIn-${ds.cmreply}`); if (ta) ta.focus(); return; }
   if (ds.cmdel) { if (!confirm("Supprimer ce message ?")) return; try { await api(`/api/comments/${ds.cmdel}`, { method: "DELETE" }); CM.list = CM.list.filter((c) => c.id !== +ds.cmdel && c.parent_id !== +ds.cmdel); paintComments(); toast("Message supprimé"); } catch (err) { toast(err.message, true); } return; }
   if (ds.cmhide) { try { await api(`/api/comments/${ds.cmhide}/hidden`, { method: "PUT", body: { hidden: ds.val === "1" } }); toast(ds.val === "1" ? "Message masqué" : "Message affiché"); if (ds.admin) render(); else loadComments(CM.lesson); } catch (err) { toast(err.message, true); } return; }
@@ -1326,6 +1374,7 @@ document.addEventListener("submit", async (e) => {
       CM.list.push(r.comment); CM.replyTo = null; paintComments(); toast("Message publié");
     }
     else if (f.id === "reviewForm") { if (!RVW.pick) { err("Choisis une note de 1 à 5 étoiles."); if (btn) btn.disabled = false; return; } await api(`/api/courses/${encodeURIComponent(RVW.slug)}/reviews`, { method: "POST", body: { rating: RVW.pick, body: $("#rvIn").value } }); toast("Merci pour ton avis !"); S.catalog = null; await loadReviews(RVW.slug); return; }
+    else if (f.id === "giftLookup") { const c = $("#gc-in").value.trim().toUpperCase(); await api(`/api/gifts/${encodeURIComponent(c)}`); location.hash = `#/cadeau/${c}`; return; }
     else if (f.id === "forgotForm") {
       const r = await api("/api/auth/forgot", { method: "POST", body: { email: $("#f-email").value } });
       f.remove();
