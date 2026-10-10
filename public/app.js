@@ -1045,7 +1045,7 @@ async function vStudioCourse(id) {
 let adminTab = "overview";
 async function vAdmin() {
   const head = `<p class="eyebrow">Administration</p><h1 style="font-size:clamp(30px,4vw,44px);margin:8px 0 6px">Pilotage NEXOMIA</h1>
-    <div class="tabs" role="group">${[["overview", "Vue d’ensemble"], ["users", "Utilisateurs"], ["orders", "Paiements"]].map(([k, l]) => `<button data-atab="${k}" aria-pressed="${adminTab === k}">${l}</button>`).join("")}</div>`;
+    <div class="tabs" role="group">${[["overview", "Vue d’ensemble"], ["users", "Utilisateurs"], ["orders", "Paiements"], ["voices", "Voix"]].map(([k, l]) => `<button data-atab="${k}" aria-pressed="${adminTab === k}">${l}</button>`).join("")}</div>`;
   if (adminTab === "users") {
     const [{ users, roles }, cat] = [await api(`/api/admin/users?q=${encodeURIComponent(S.adminQ || "")}`), await loadCatalog()];
     return head + `<form id="userSearch" style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap"><input id="u-q" class="chip" style="flex:1;min-width:200px;font-weight:400;padding:10px 14px" placeholder="Rechercher un nom ou une adresse" value="${esc(S.adminQ || "")}"><button class="btn btn-ghost btn-sm">Rechercher</button></form>
@@ -1054,6 +1054,24 @@ async function vAdmin() {
       <td><select data-role="${u.id}" aria-label="Rôle de ${esc(u.name)}">${roles.map((r) => `<option value="${r}" ${r === u.role ? "selected" : ""}>${ROLE_FR[r]}</option>`).join("")}</select></td><td class="num">${u.subs}</td>
       <td style="display:flex;gap:6px;flex-wrap:wrap"><button class="btn btn-ghost btn-sm" data-resetlink="${u.id}">Lien mot de passe</button><select data-grant="${u.id}" aria-label="Offrir un mois de cours"><option value="">Bourse : offrir 1 mois…</option>${cat.map((c) => `<option value="${c.id}">${esc(c.title)}</option>`).join("")}</select><button class="btn btn-ghost btn-sm" data-suspend="${u.id}" data-val="${u.suspended ? 0 : 1}">${u.suspended ? "Réactiver" : "Suspendre"}</button></td></tr>`).join("")}
     </tbody></table></div><div id="resetOut"></div>`;
+  }
+  if (adminTab === "voices") {
+    const t = await api("/api/admin/tts"), j = t.job;
+    if (j.running) setTimeout(() => { if (adminTab === "voices" && location.hash === "#/admin") render(); }, 4000);
+    const cost = (chars) => t.provider === "elevenlabs" ? `${chars.toLocaleString("fr-FR")} caractères` : `${chars.toLocaleString("fr-FR")} caractères (gratuit jusqu’à 1 million par mois chez Google)`;
+    return head + `<div class="card"><h3 style="font-size:20px">Voix professionnelles</h3>
+      <p class="muted" style="margin-top:6px;max-width:70ch">Génère automatiquement un audio de qualité pour chaque phrase, avec une voix différente par personnage (A : femme, B : homme, narration). Les audios déjà enregistrés par l’équipe ne sont jamais remplacés, et tu peux remplacer n’importe quel audio généré par une voix humaine dans le Studio.</p>
+      <p style="margin-top:12px">Service : <b>${t.provider === "elevenlabs" ? "ElevenLabs" : t.provider === "google" ? "Google Text-to-Speech" : "aucun"}</b></p>
+      ${!t.provider ? `<div class="note" style="margin-top:12px">Pour activer les voix, ajoute dans Railway <b>ELEVENLABS_API_KEY</b> (ElevenLabs) ou <b>GOOGLE_TTS_API_KEY</b> (Google Cloud), puis clique sur Deploy. Ne colle jamais la clé dans une conversation.</div>` : ""}
+      ${j.total ? `<div class="ttsjob ${j.running ? "on" : ""}"><b>${esc(String(j.course))}</b> · ${j.done} / ${j.total} audios${j.failed ? ` · ${j.failed} échec${j.failed > 1 ? "s" : ""}` : ""} ${j.running ? "· en cours…" : j.finished_at ? "· terminé" : ""}
+        <div class="pbar" style="margin:8px 0"><i style="width:${Math.max(2, Math.round(((j.done + j.failed) / j.total) * 100))}%"></i></div>
+        ${j.errors.length ? `<small class="muted">${j.errors.map(esc).join("<br>")}</small>` : ""}
+        ${j.running ? `<button class="btn btn-ghost btn-sm" style="margin-top:8px" data-ttsstop>Arrêter</button>` : ""}</div>` : ""}
+    </div>
+    <div class="table-wrap" style="margin-top:14px"><table class="t"><thead><tr><th>Cours</th><th>Langue</th><th>Audios</th><th>Reste à générer</th><th></th></tr></thead><tbody>
+      ${t.courses.map((c) => `<tr><td><b>${esc(c.title)}</b></td><td>${esc(c.lang)}</td><td class="num">${c.done} / ${c.total}</td><td>${c.total - c.done ? cost(c.chars) : "Complet"}</td>
+        <td>${c.total - c.done && t.provider ? `<button class="btn btn-primary btn-sm" data-tts="${c.id}" ${j.running ? "disabled" : ""}>Générer ${c.total - c.done} audio${c.total - c.done > 1 ? "s" : ""}</button>` : ""}</td></tr>`).join("")}
+    </tbody></table></div>`;
   }
   if (adminTab === "orders") {
     const { orders } = await api("/api/admin/orders");
@@ -1148,6 +1166,8 @@ document.addEventListener("click", async (e) => {
   if (ds.dellesson) { if (!confirm("Supprimer cette leçon et ses audios ?")) return; try { await api(`/api/studio/lessons/${ds.dellesson}`, { method: "DELETE" }); toast("Leçon supprimée"); render(); } catch (err) { toast(err.message, true); } return; }
   if (ds.delaudio) { try { await api(`/api/studio/sentences/${ds.delaudio}/audio`, { method: "DELETE" }); toast("Audio retiré"); render(); } catch (err) { toast(err.message, true); } return; }
   // Admin
+  if (ds.tts) { t.disabled = true; try { await api("/api/admin/tts", { method: "POST", body: { courseId: +ds.tts } }); toast("Génération des voix lancée"); render(); } catch (err) { toast(err.message, true); t.disabled = false; } return; }
+  if (ds.ttsstop !== undefined) { await api("/api/admin/tts", { method: "POST", body: { stop: true } }).catch(() => {}); toast("Arrêt demandé"); render(); return; }
   if (ds.atab) { adminTab = ds.atab; return render(); }
   if (ds.resetlink) { try { const r = await api(`/api/admin/users/${ds.resetlink}/reset-link`, { method: "POST" }); $("#resetOut").innerHTML = `<div class="card" style="margin-top:14px"><b>Lien à transmettre à la personne (valable 48 h) :</b><p style="margin-top:8px;word-break:break-all;font-family:var(--f-mono);font-size:13px;user-select:all">${esc(r.url)}</p><button class="btn btn-ghost btn-sm" style="margin-top:10px" data-copy="${esc(r.url)}">Copier</button></div>`; } catch (err) { toast(err.message, true); } return; }
   if (ds.copy) { try { await navigator.clipboard.writeText(ds.copy); toast("Lien copié"); } catch { toast("Sélectionne le lien pour le copier"); } return; }

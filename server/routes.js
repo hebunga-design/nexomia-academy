@@ -421,6 +421,16 @@ r.post("/api/studio/courses/:id/decision", async (ctx) => {
 
 // ---------- Administration ----------
 const admin = A.requireRole("admin");
+// Voix professionnelles
+const TTS = require("./tts");
+r.get("/api/admin/tts", (ctx) => { admin(ctx); ok(ctx, TTS.status()); });
+r.post("/api/admin/tts", async (ctx) => {
+  admin(ctx);
+  const b = await readJson(ctx.req);
+  if (b.stop) return ok(ctx, TTS.stopJob());
+  if (!one("SELECT 1 FROM courses WHERE id = ?", Number(b.courseId))) throw new HttpError(404, "Cours introuvable.");
+  try { ok(ctx, await TTS.runJob(Number(b.courseId), ctx.user.id)); } catch (e) { throw new HttpError(400, e.message); }
+});
 r.get("/api/admin/overview", (ctx) => {
   admin(ctx);
   const now = nowIso();

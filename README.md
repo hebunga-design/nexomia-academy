@@ -10,6 +10,9 @@ Plateforme d’apprentissage en ligne de NEXOMIA (Lubumbashi, RDC) : langues (an
 |---|---|
 | Apprenant | Inscription, catalogue, première leçon gratuite par cours, lecteur audio (vitesse, phrase par phrase, boucle, écoute-répète, traduction, écran verrouillé), exercices d’écoute avec seuil de réussite de 80 %, progression, série de jours, téléchargement hors connexion |
 | Abonnements | 5 USD par cours et par mois, tarif dégressif quand plusieurs cours sont payés ensemble (par défaut : 1 cours 5 $, 2 cours 8 $, 3 cours 12 $, puis +4 $ par cours), M-Pesa, Airtel Money, Orange Money, carte |
+| Apprentissage | Test de niveau A1→C2, exercices variés (écoute, mots dans l’ordre, phrase à compléter, dictée), prononciation au micro, révision espacée du vocabulaire |
+| Motivation | Accueil guidé, points, objectif du jour, série de jours, badges, classement de la semaine, certificat PDF vérifiable à chaque niveau |
+| Interface | Français et anglais, thème clair et sombre, accessible au clavier et aux lecteurs d’écran |
 | Studio | Création de cours dans n’importe quel domaine, leçons à partir de phrases (`phrase \| traduction`), exercices générés, envoi des voix enregistrées par phrase, circuit Brouillon → En revue → Publié → Archivé |
 | Administration | Indicateurs, rôles, suspension, lien de réinitialisation du mot de passe, bourses (un mois offert), suivi des paiements, réglage du tarif dégressif |
 
@@ -55,6 +58,8 @@ ADMIN_EMAILS=vous@exemple.com node server/index.js
 | `PUBLIC_URL` | Adresse publique du site (pour les retours de paiement) |
 | `PAYMENTS_TEST_MODE` | `true` par défaut : paiements simulés tant que FlexPay n’est pas configuré. `false` pour fermer les paiements |
 | `PAWAPAY_TOKEN` | Jeton API pawaPay (prestataire prioritaire dès qu’il est renseigné ; Mobile Money uniquement) |
+| `ELEVENLABS_API_KEY` | Clé ElevenLabs pour générer les voix professionnelles (Admin → Voix). Facultatif : `ELEVENLABS_VOICE_A`, `_B`, `_N` pour choisir les voix |
+| `GOOGLE_TTS_API_KEY` | Alternative : clé Google Cloud Text-to-Speech (voix Neural2) |
 | `PAWAPAY_SANDBOX` | `true` pour utiliser l’environnement de test pawaPay avec un jeton de test |
 | `FLEXPAY_TOKEN`, `FLEXPAY_MERCHANT` | Identifiants du compte marchand FlexPay. Dès qu’ils sont renseignés, le mode test s’arrête |
 | `FLEXPAY_PAYMENT_URL`, `FLEXPAY_CARD_URL`, `FLEXPAY_CHECK_URL` | Adresses de l’API FlexPay, à confirmer avec FlexPay (des valeurs par défaut sont prévues) |
