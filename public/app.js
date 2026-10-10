@@ -40,6 +40,14 @@ const I = {
   dl: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M12 3v12M7 10l5 5 5-5M4 21h16"/></svg>',
   sun: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>',
 };
+const FI = {
+  ear: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 8.5a6 6 0 0 1 12 0c0 4-3 4.5-3 7.5a3.5 3.5 0 0 1-6.5 1.8"/><path d="M9.5 8.5a2.5 2.5 0 0 1 5 0c0 1.5-1.5 2-1.5 3.5"/></svg>',
+  mic: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 10v1a7 7 0 0 0 14 0v-1M12 18v4"/></svg>',
+  puzzle: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M4 7h4a2 2 0 1 1 4 0h4v4a2 2 0 1 1 0 4v4h-4a2 2 0 1 0-4 0H4v-4a2 2 0 1 0 0-4z"/></svg>',
+  brain: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 12a9 9 0 1 1-3-6.7"/><path d="M21 4v5h-5"/><path d="M12 8v4l3 2"/></svg>',
+  target: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1.5" fill="currentColor"/></svg>',
+  award: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><circle cx="12" cy="9" r="6"/><path d="M8.5 14 7 22l5-3 5 3-1.5-8"/></svg>',
+};
 const wave = (n) => Array.from({ length: n }, (_, i) => `<i style="--h:${30 + ((i * 37) % 70)}%;animation-delay:${(i % 7) * 0.09}s"></i>`).join("");
 const motif = (w = 64) => `<div class="motif" style="width:${w}px" aria-hidden="true"><span class="m1"></span><span class="m2"></span><span class="m2"></span><span class="q"><span class="m1"></span><span class="m3"></span><span class="m3"></span><span class="m4"></span></span></div>`;
 const RANK = { learner: 0, mentor: 1, coach: 2, creator: 3, reviewer: 4, admin: 5 };
@@ -47,7 +55,7 @@ const ROLE_FR = { learner: "Apprenant", mentor: "Mentor", coach: "Accompagnateur
 const can = (role) => S.me && RANK[S.me.role] >= RANK[role];
 
 /* ================= État ================= */
-const S = { me: null, payments: "test", methods: ["mpesa", "airtel", "orange", "card"], catalog: null, pricing: null, filter: "Tous", cart: store.get("cart", []), payMethod: "mpesa" };
+const S = { lang: store.get("uilang", "fr"), me: null, payments: "test", methods: ["mpesa", "airtel", "orange", "card"], catalog: null, pricing: null, filter: "Tous", cart: store.get("cart", []), payMethod: "mpesa" };
 const priceFor = (n, p = S.pricing) => { if (!p || n <= 0) return 0; const t = p.tiers; return n <= t.length ? t[n - 1] : t[t.length - 1] + (n - t.length) * p.extra; };
 
 /* ================= Voix (synthèse de l'appareil, en secours) ================= */
@@ -168,7 +176,7 @@ function paintNav() {
   $("#tabbar").innerHTML = tabs().map(([href, l, i]) => `<a href="${href}" ${cur(href) ? 'aria-current="page"' : ""} aria-label="${l}">${I[i]}<span>${SHORT[l] || l}</span></a>`).join("");
   $("#topActions").innerHTML = (S.me
     ? `<a class="user-chip" href="#/parcours" style="text-decoration:none;color:inherit"><span class="av">${esc(S.me.name[0].toUpperCase())}</span><span class="n">${esc(S.me.name.split(" ")[0])}</span></a><button class="iconbtn" data-logout aria-label="Se déconnecter" title="Se déconnecter"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/></svg></button>`
-    : `<a class="btn btn-ghost btn-sm" href="#/connexion">Se connecter</a>`) + `<button class="iconbtn" data-theme aria-label="Changer de thème">${I.sun}</button>`;
+    : `<a class="btn btn-ghost btn-sm" href="#/connexion">Se connecter</a>`) + `<button class="iconbtn langbtn" data-uilang aria-label="Changer la langue" title="Français / English"><span data-noi18n>${S.lang === "en" ? "FR" : "EN"}</span></button><button class="iconbtn" data-theme aria-label="Changer de thème">${I.sun}</button>`;
 }
 
 const routes = [
@@ -197,6 +205,10 @@ async function render() {
     if (typeof html === "string") app.innerHTML = html + footer();
     paintPlayer();
     window.scrollTo(0, 0);
+    // Accessibilité : annoncer la nouvelle page et placer le focus en haut du contenu.
+    const h1 = app.querySelector("h1, h2");
+    const ann = $("#announce"); if (ann && h1) ann.textContent = h1.textContent;
+    if (navigated) { app.focus({ preventScroll: true }); navigated = false; }
   } catch (e) {
     if (my !== renderId) return;
     app.innerHTML = `<div class="empty"><p><b>${esc(e.message)}</b></p><p style="margin-top:12px"><button class="btn btn-ghost btn-sm" data-reload>Réessayer</button></p></div>`;
@@ -249,11 +261,37 @@ async function vHome() {
       <div class="row"><button class="play" id="heroPlay" aria-label="Écouter">${I.play}</button><div class="wave" aria-hidden="true">${wave(34)}</div></div>
       <div class="langs" role="group" aria-label="Langue"><button class="chip" data-hl="en" aria-pressed="${heroLang === "en"}">Anglais</button><button class="chip" data-hl="pt" aria-pressed="${heroLang === "pt"}">Portugais</button></div>
     </div></section>
+  <div class="trust" aria-label="En bref"><span><b>44</b> leçons d’anglais</span><span><b>A1 → C2</b> tous les niveaux</span><span><b>1re leçon</b> gratuite</span><span><b>Certificat</b> à chaque niveau</span></div>
+  <section class="sec"><div class="sec-h"><div><p class="eyebrow">Ce que tu obtiens</p><h2>Une méthode complète, pensée pour ton téléphone</h2></div></div>
+    <div class="features">
+      ${[["ear", "Écoute de vraies conversations", "Des dialogues de la vie réelle, phrase par phrase, à la vitesse que tu veux, même écran verrouillé."],
+         ["mic", "Parle, l’application t’écoute", "Prononce chaque phrase au micro : les mots bien dits s’affichent en vert, les autres en rouge."],
+         ["puzzle", "Exercices variés", "Écoute, mots dans l’ordre, phrase à compléter et dictée : tu pratiques vraiment, pas seulement des QCM."],
+         ["brain", "Révision intelligente", "Les mots que tu oublies reviennent au bon moment. Ceux que tu maîtrises reviennent de plus en plus tard."],
+         ["target", "Test de niveau gratuit", "En 10 minutes, tu sais si tu commences en A1, B1 ou C1. Plus de temps perdu sur ce que tu sais déjà."],
+         ["award", "Certificat à chaque niveau", "Un certificat NEXOMIA à ton nom, en PDF, vérifiable en ligne par n’importe quel employeur."]]
+        .map(([ic, t, d]) => `<div class="feat"><span class="fico" aria-hidden="true">${FI[ic]}</span><h3>${t}</h3><p class="muted">${d}</p></div>`).join("")}
+    </div></section>
+  <section class="sec"><div class="sec-h"><div><p class="eyebrow">Anglais · du premier mot au discours</p><h2>Six niveaux, un seul abonnement</h2></div></div>
+    <ol class="ladder">${[["A1", "Débutant", "Se présenter, compter, acheter au marché"], ["A2", "Élémentaire", "Raconter sa journée, téléphoner, comparer"], ["B1", "Intermédiaire", "Parler de projets, entretien d’embauche"], ["B2", "Intermédiaire avancé", "Négocier, défendre son opinion"], ["C1", "Avancé", "Pitch, courriel formel, nuances"], ["C2", "Maîtrise", "Humour, rhétorique, presse"]]
+      .map(([l, n, d], i) => `<li style="--i:${i}"><span class="lv">${l}</span><b>${n}</b><small>${d}</small></li>`).join("")}</ol>
+    <p style="margin-top:16px"><a class="btn btn-ghost" href="#/test-niveau/anglais">Passer le test de niveau gratuit</a></p></section>
+  <section class="sec"><div class="sec-h"><div><p class="eyebrow">Comment ça marche</p><h2>Trois étapes, dix minutes par jour</h2></div></div>
+    <div class="steps">${[["Crée ton compte gratuit", "Choisis ton objectif et ton rythme, puis passe le test de niveau."], ["Écoute, parle, pratique", "Une leçon courte par jour, avec exercices corrigés et prononciation au micro."], ["Obtiens ton certificat", "Valide chaque niveau et partage ton certificat avec ton employeur."]]
+      .map(([t, d], i) => `<div class="step"><span class="snum">${i + 1}</span><h3>${t}</h3><p class="muted">${d}</p></div>`).join("")}</div></section>
   <section class="sec"><div class="sec-h"><div><p class="eyebrow">Le cycle NEXOMIA</p><h2>Ton parcours ne s’arrête pas à la dernière leçon</h2></div></div>
     <div class="cycle"><div class="c1"><b>Apprendre</b><small>Cours, audios et exercices adaptés à ton niveau</small></div><div class="c2"><b>Pratiquer</b><small>Projets réels, corrigés par un formateur</small></div><div class="c3"><b>Produire</b><small>Tes premiers clients, tes premiers revenus</small></div><div class="c4"><b>Transmettre</b><small>Deviens mentor et forme à ton tour</small></div></div></section>
   <section class="sec"><div class="sec-h"><div><p class="eyebrow">Catalogue</p><h2>Les compétences qui ouvrent des portes</h2></div><a class="btn btn-ghost btn-sm" href="#/cours">Voir tous les cours</a></div>
     <div class="grid">${courses.slice(0, 3).map(courseCard).join("")}</div></section>
-  <section class="sec">${priceBlock()}</section>`;
+  <section class="sec">${priceBlock()}</section>
+  <section class="sec faq"><div class="sec-h"><div><p class="eyebrow">Questions fréquentes</p><h2>Tout ce qu’il faut savoir</h2></div></div>
+    ${[["Comment je paie ?", "Avec M-Pesa, Airtel Money ou Orange Money. Tu reçois une demande sur ton téléphone et tu la valides avec ton code secret. NEXOMIA ne te demande jamais ton code."],
+       ["Est-ce que je peux essayer avant de payer ?", "Oui. La première leçon de chaque cours est gratuite, et le test de niveau est gratuit."],
+       ["Je dois avoir beaucoup de données Internet ?", "Non. Les leçons sont légères, et tu peux télécharger les audios pour les écouter hors connexion."],
+       ["Le certificat est-il reconnu ?", "C’est un certificat NEXOMIA aligné sur les niveaux européens (A1 à C2). Chaque certificat porte un code que n’importe qui peut vérifier en ligne."],
+       ["Je peux arrêter quand je veux ?", "Oui. L’abonnement dure un mois et ne se renouvelle pas tout seul. Tu repaies seulement si tu veux continuer."]]
+      .map(([q, r]) => `<details class="qa"><summary>${q}</summary><p class="muted">${r}</p></details>`).join("")}
+  </section>`;
 }
 async function heroPlay() {
   const card = $("#heroCard"); if (!card) return;
@@ -1044,6 +1082,7 @@ document.addEventListener("click", async (e) => {
   if (ds.close !== undefined || ds.retry !== undefined) { if ($("#payModal") && payCtx) payCtx.dismissed = true; $("#layer").innerHTML = ""; if (ds.retrypay !== undefined) { pollRun++; payCtx = null; render(); return; } if (ds.retry !== undefined) { Q.state = newQuizState(); $("#quiz").innerHTML = quizHTML(); P.mode = "phrase"; playFrom(0); } if (t.tagName !== "A") return; }
   if (ds.reload !== undefined) return render();
   if (ds.jump) { e.preventDefault(); const el = document.getElementById(ds.jump); if (el) el.scrollIntoView({ behavior: "smooth", block: "start" }); return; }
+  if (ds.uilang !== undefined) { setUiLang(S.lang === "en" ? "fr" : "en", true); return; }
   if (ds.theme !== undefined) { const r = document.documentElement; const dark = r.dataset.theme ? r.dataset.theme === "dark" : matchMedia("(prefers-color-scheme: dark)").matches; r.dataset.theme = dark ? "light" : "dark"; store.set("theme", r.dataset.theme); return; }
   if (ds.logout !== undefined) { await api("/api/auth/logout", { method: "POST" }).catch(() => {}); S.me = null; S.catalog = null; stopPlay(); P.data = null; location.hash = "#/"; render(); return; }
   if (t.id === "heroPlay") return heroPlay();
@@ -1147,9 +1186,16 @@ document.addEventListener("submit", async (e) => {
   if (btn) btn.disabled = false;
 });
 
-window.addEventListener("hashchange", () => { $("#layer").innerHTML = ""; render(); });
+let navigated = false;
+window.addEventListener("hashchange", () => { $("#layer").innerHTML = ""; navigated = true; render(); });
 document.addEventListener("keydown", (e) => { if (e.key === "Escape") $("#layer").innerHTML = ""; });
 
+function setUiLang(l, save) {
+  S.lang = l; store.set("uilang", l);
+  if (window.NXI18N) NXI18N.setLang(l);
+  paintNav();
+  if (save && S.me) api("/api/me/profile", { method: "PUT", body: { ui_lang: l } }).catch(() => {});
+}
 async function sendPendingPlacement() {
   const pp = store.get("pendingPlacement", null); if (!pp || !S.me) return;
   try { const r = await api("/api/me/placement", { method: "POST", body: pp }); S.me.placement = r.placement; } catch {}
@@ -1157,6 +1203,8 @@ async function sendPendingPlacement() {
 }
 async function boot(silent) {
   try { const r = await api("/api/me"); S.me = r.user; S.payments = r.payments; if (r.methods) S.methods = r.methods; } catch { S.me = null; }
+  if (S.me && S.me.ui_lang && store.get("uilang", null) === null) S.lang = S.me.ui_lang;
+  if (window.NXI18N) NXI18N.setLang(S.lang);
   if (!silent) render();
 }
 (() => { const t = store.get("theme", null); if (t) document.documentElement.dataset.theme = t; })();
