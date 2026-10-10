@@ -54,11 +54,11 @@ function writeLessonContent(lessonId, { sentences, vocab, questions }) {
   }
 }
 
-function addLesson(courseId, { title, goal, duration_min, lines, sentences, vocab, questions }) {
+function addLesson(courseId, { title, goal, duration_min, lines, sentences, vocab, questions, module, notes }) {
   return tx(() => {
     const pos = (one("SELECT MAX(position) AS m FROM lessons WHERE course_id = ?", courseId).m || 0) + 1;
     const sents = sentences || parseLines(lines);
-    const r = run("INSERT INTO lessons(course_id, position, title, duration_min, goal) VALUES(?, ?, ?, ?, ?)", courseId, pos, String(title || `Leçon ${pos}`).slice(0, 120), duration_min || Math.max(3, sents.length * 2), String(goal || "").slice(0, 300));
+    const r = run("INSERT INTO lessons(course_id, position, title, duration_min, goal, module, notes) VALUES(?, ?, ?, ?, ?, ?, ?)", courseId, pos, String(title || `Leçon ${pos}`).slice(0, 120), duration_min || Math.max(3, sents.length * 2), String(goal || "").slice(0, 300), String(module || "").slice(0, 60), String(notes || "").slice(0, 3000));
     const id = Number(r.lastInsertRowid);
     writeLessonContent(id, {
       sentences: sents,

@@ -276,6 +276,27 @@ async function vCatalog() {
     ${list.length ? `<div class="grid">${list.map(courseCard).join("")}</div>` : `<div class="empty">Aucun cours dans ce domaine pour l’instant.</div>`}`;
 }
 
+function groupByModule(lessons) {
+  const out = [];
+  for (const l of lessons) { const m = l.module || ""; const last = out[out.length - 1]; if (last && last[0] === m) last[1].push(l); else out.push([m, [l]]); }
+  return out;
+}
+function modulesNav(lessons) {
+  const g = groupByModule(lessons); if (g.length < 2) return "";
+  return `<nav class="modnav" aria-label="Niveaux">${g.map(([m], i) => `<button type="button" class="chip" data-jump="mod-${i}">${esc(m.split("·")[0].trim() || m)}</button>`).join("")}</nav>`;
+}
+// Mise en forme simple et sûre des explications : **gras**, listes « - », paragraphes.
+function richNotes(t) {
+  const lines = esc(t).replace(/\*\*(.+?)\*\*/g, "<b>$1</b>").split("\n");
+  let html = "", list = false;
+  for (const ln of lines) {
+    const m = ln.match(/^\s*[-•]\s+(.*)$/);
+    if (m) { if (!list) { html += "<ul>"; list = true; } html += `<li>${m[1]}</li>`; continue; }
+    if (list) { html += "</ul>"; list = false; }
+    if (ln.trim()) html += `<p>${ln}</p>`;
+  }
+  return html + (list ? "</ul>" : "");
+}
 async function vCourse(slug) {
   await loadCatalog();
   const { course: c, lessons } = await api(`/api/courses/${encodeURIComponent(slug)}`);
@@ -284,9 +305,11 @@ async function vCourse(slug) {
   <div class="course-hero" style="background:${esc(c.color)}"><div><p class="eyebrow" style="color:#fff;opacity:.8">${esc(c.domain)} · ${esc(c.code)}</p><h1 style="margin:8px 0">${esc(c.title)}</h1><p>${esc(c.level)} · ${lessons.length} leçon${lessons.length > 1 ? "s" : ""}</p></div><span class="big" aria-hidden="true">${esc(c.big)}</span></div>
   ${c.status !== "published" ? `<div class="review-note">Aperçu équipe : ce cours n’est pas encore publié.</div>` : ""}
   <div class="dash">
-    <div class="llist">${lessons.map((l) => `<a class="lrow ${l.completed ? "done" : ""} ${l.locked ? "locked" : ""}" href="#/lecon/${l.id}" style="text-decoration:none;color:inherit">
+    <div style="min-width:0">${modulesNav(lessons)}${groupByModule(lessons).map(([mod, ls], gi) => `<section class="modsec" id="mod-${gi}">
+      ${mod ? `<div class="modhead"><h2>${esc(mod)}</h2><span class="muted">${ls.filter((l) => l.completed).length}/${ls.length} leçon${ls.length > 1 ? "s" : ""}</span></div>` : ""}
+      <div class="llist">${ls.map((l) => `<a class="lrow ${l.completed ? "done" : ""} ${l.locked ? "locked" : ""}" href="#/lecon/${l.id}" style="text-decoration:none;color:inherit">
       <span class="num">${l.completed ? "✓" : l.position}</span><span style="min-width:0"><b>${esc(l.title)}</b><br><span class="st">${l.duration_min} min${l.position === 1 && !sub ? " · gratuite" : ""}${l.score !== null && l.score !== undefined ? ` · meilleur score ${l.score} %` : ""}</span></span>
-      <span class="st">${l.locked ? "Abonnement" : l.completed ? "Terminée" : "Écouter"}</span></a>`).join("")}</div>
+      <span class="st">${l.locked ? "Abonnement" : l.completed ? "Terminée" : "Écouter"}</span></a>`).join("")}</div></section>`).join("")}</div>
     <div class="card" style="align-self:start"><p class="muted">${esc(c.description)}</p>
       ${sub ? `<p style="margin-top:14px"><span class="tag subbed">Abonné jusqu’au ${fmtD(sub)}</span></p><a class="btn btn-ghost btn-sm" style="margin-top:12px" data-subscribe="${c.id}" href="#/abonnements">Prolonger d’un mois</a>`
       : `<p class="amount" style="font-family:var(--f-display);font-size:40px;font-weight:800;margin-top:16px">${money(S.pricing.tiers[0])} <small class="muted" style="font-size:15px;font-weight:500">par mois</small></p><button class="btn btn-primary" style="width:100%;margin-top:12px" data-subscribe="${c.id}">S’abonner à ce cours</button><p class="muted" style="font-size:13px;margin-top:10px">La première leçon est gratuite. Prix réduit si tu prends plusieurs cours ensemble.</p>`}
@@ -320,12 +343,13 @@ async function vLesson(id) {
   const audioCount = l.sentences.filter((s) => s.audio).length;
   return `<a class="back" href="#/cours/${esc(c.slug)}">${I.back} ${esc(c.title)}</a>
   <div class="lesson"><div style="min-width:0">
-    <div class="lesson-head"><p class="eyebrow">${esc(c.code)} · Leçon ${l.position} sur ${d.lessons.length} · ${l.duration_min} min</p><h1>${esc(l.title)}</h1>
+    <div class="lesson-head"><p class="eyebrow">${l.module ? esc(l.module) + " · " : esc(c.code) + " · "}Leçon ${l.position} sur ${d.lessons.length} · ${l.duration_min} min</p><h1>${esc(l.title)}</h1>
       <p class="muted">Écoute chaque phrase, répète-la à voix haute, puis vérifie que tu as compris.</p>
       <p style="margin-top:10px;display:flex;gap:10px;align-items:center;flex-wrap:wrap">
         ${d.subscribed_until ? `<span class="tag subbed">Abonné jusqu’au ${fmtD(d.subscribed_until)}</span>` : l.position === 1 ? `<span class="tag">Leçon d’essai gratuite</span><button class="btn btn-ghost btn-sm" data-subscribe="${c.id}">S’abonner · ${money((S.pricing || { tiers: [5] }).tiers[0])} / mois</button>` : ""}
         ${audioCount && "caches" in window ? `<button class="btn btn-ghost btn-sm" data-offline="${l.id}">${I.dl} Télécharger pour écouter hors connexion</button>` : ""}
       </p></div>
+    ${l.notes ? `<div class="notes-card"><p class="eyebrow">À retenir</p>${richNotes(l.notes)}</div>` : ""}
     <div class="player" id="player"></div>
     ${voiceMissing ? `<p class="note">Cet appareil n’a pas de voix pour cette langue. Les phrases sans enregistrement seront lues dès qu’une voix sera disponible, ou quand l’équipe aura ajouté l’audio.</p>` : ""}
     <div class="transcript ${P.showTr ? "" : "hide-tr"}" id="transcript">${l.sentences.map((s, i) => `<button class="sent" data-sent="${i}"><span class="who ${s.speaker === "B" ? "b" : ""}">${s.speaker === "N" ? "♪" : esc(s.speaker)}</span><span style="min-width:0"><span class="t">${esc(s.text)}</span>${s.translation ? `<span class="tr" style="display:block">${esc(s.translation)}</span>` : ""}</span><span class="mini" aria-hidden="true">${I.spk}</span></button>`).join("")}</div>
@@ -345,7 +369,7 @@ function quizHTML() {
     <h3 style="font-size:18px;margin:8px 0 10px">${esc(q.prompt)}</h3>
     <button class="btn btn-dark btn-sm" data-say="${esc(q.say)}">${I.spk} Écouter l’extrait</button>
     ${q.options.map((o, i) => `<button class="opt ${ans && i === q.answer ? "right" : ""} ${ans && i === st.picked && i !== q.answer ? "wrong" : ""}" data-pick="${i}" ${ans ? "disabled" : ""}>${esc(o)}</button>`).join("")}
-    ${ans ? `<div class="feedback"><b style="color:${st.picked === q.answer ? "var(--ok)" : "var(--bad)"}">${st.picked === q.answer ? "Bien entendu !" : "Pas tout à fait."}</b> ${esc(q.explanation)}</div>
+    ${ans ? `<div class="feedback"><b style="color:${st.picked === q.answer ? "var(--ok)" : "var(--bad)"}">${st.picked === q.answer ? "Bien entendu !" : "Pas tout à fait."}</b> ${esc(q.explanation).replace(/\*\*(.+?)\*\*/g, "<b>$1</b>")}</div>
     <button class="btn btn-primary" style="width:100%;margin-top:12px" data-qnext>${st.i + 1 < qs.length ? "Question suivante" : "Voir mon résultat"}</button>` : ""}`;
 }
 async function finishLesson() {
@@ -635,7 +659,9 @@ async function vStudioCourse(id) {
     <div style="display:grid;gap:18px;min-width:0">
       ${lessons.map((l) => `<div class="card"><form class="lessonForm" data-lesson="${l.id}">
         <div class="two"><div class="field"><label for="lt-${l.id}">Leçon ${l.position}</label><input id="lt-${l.id}" name="title" value="${esc(l.title)}" ${editable ? "" : "disabled"}></div><div class="field"><label for="ld-${l.id}">Durée (min)</label><input id="ld-${l.id}" name="duration_min" type="number" min="1" max="120" value="${l.duration_min}" ${editable ? "" : "disabled"}></div></div>
-        <div class="field"><label for="lg-${l.id}">Objectif affiché à la fin</label><input id="lg-${l.id}" name="goal" value="${esc(l.goal)}" ${editable ? "" : "disabled"}></div>
+        <div class="two"><div class="field"><label for="lm-${l.id}">Niveau / module</label><input id="lm-${l.id}" name="module" value="${esc(l.module || "")}" placeholder="A1 · Débutant" ${editable ? "" : "disabled"}></div>
+        <div class="field"><label for="lg-${l.id}">Objectif affiché à la fin</label><input id="lg-${l.id}" name="goal" value="${esc(l.goal)}" ${editable ? "" : "disabled"}></div></div>
+        <div class="field"><label for="ln-${l.id}">À retenir (explication)</label><textarea id="ln-${l.id}" name="notes" style="min-height:90px;font-family:var(--f-body)" ${editable ? "" : "disabled"}>${esc(l.notes || "")}</textarea><span class="hint">Texte simple. **gras** et lignes commençant par « - » pour une liste.</span></div>
         <div class="field"><label for="ll-${l.id}">Phrases</label><textarea id="ll-${l.id}" name="lines" spellcheck="false" ${editable ? "" : "disabled"}>${esc(linesOf(l))}</textarea></div>
         ${editable ? `<div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn btn-primary btn-sm">Enregistrer la leçon</button><button type="button" class="btn btn-ghost btn-sm" data-dellesson="${l.id}">Supprimer</button></div>` : ""}</form>
         <h4 style="margin:18px 0 8px">Voix enregistrées</h4>
@@ -653,7 +679,9 @@ async function vStudioCourse(id) {
         <button class="btn btn-ghost btn-sm">Enregistrer</button></form>
       <form class="card" id="addLesson" data-course="${c.id}"><h3 style="font-size:18px;margin-bottom:12px">Ajouter une leçon</h3>
         <div class="field"><label for="a-title">Titre</label><input id="a-title" required></div>
-        <div class="field"><label for="a-goal">Objectif</label><input id="a-goal" placeholder="Tu sais maintenant…"></div>
+        <div class="two"><div class="field"><label for="a-module">Niveau / module</label><input id="a-module" placeholder="A1 · Débutant" value="${esc((lessons[lessons.length - 1] || {}).module || "")}"></div>
+        <div class="field"><label for="a-goal">Objectif</label><input id="a-goal" placeholder="Tu sais maintenant…"></div></div>
+        <div class="field"><label for="a-notes">À retenir (explication)</label><textarea id="a-notes" style="min-height:80px;font-family:var(--f-body)" placeholder="**to be** : I am, you are…"></textarea></div>
         <div class="field"><label for="a-lines">Phrases</label><textarea id="a-lines" spellcheck="false" required placeholder="phrase | traduction"></textarea></div>
         <button class="btn btn-primary btn-sm">Ajouter la leçon</button><p class="err" id="formErr" role="alert"></p></form>` : ""}
       <div class="card"><h3 style="font-size:18px">Normes audio</h3><p class="muted" style="font-size:14px;margin-top:6px">MP3 ou M4A, mono, 96 kbit/s, volume normalisé à −16 LUFS, 8 Mo maximum par phrase. Locuteur natif, pièce calme, 0,3 s de silence au début et à la fin.</p></div>
@@ -696,10 +724,11 @@ async function vAdmin() {
 
 /* ================= Événements ================= */
 document.addEventListener("click", async (e) => {
-  const t = e.target.closest("button,[data-seek],a[data-close],a[data-subscribe]"); if (!t) return;
+  const t = e.target.closest("button,[data-seek],a[data-close],a[data-subscribe],a[data-jump]"); if (!t) return;
   const ds = t.dataset;
   if (ds.close !== undefined || ds.retry !== undefined) { if ($("#payModal") && payCtx) payCtx.dismissed = true; $("#layer").innerHTML = ""; if (ds.retrypay !== undefined) { pollRun++; payCtx = null; render(); return; } if (ds.retry !== undefined) { Q.state = { i: 0, correct: 0, picked: null }; $("#quiz").innerHTML = quizHTML(); P.mode = "phrase"; playFrom(0); } if (t.tagName !== "A") return; }
   if (ds.reload !== undefined) return render();
+  if (ds.jump) { e.preventDefault(); const el = document.getElementById(ds.jump); if (el) el.scrollIntoView({ behavior: "smooth", block: "start" }); return; }
   if (ds.theme !== undefined) { const r = document.documentElement; const dark = r.dataset.theme ? r.dataset.theme === "dark" : matchMedia("(prefers-color-scheme: dark)").matches; r.dataset.theme = dark ? "light" : "dark"; store.set("theme", r.dataset.theme); return; }
   if (ds.logout !== undefined) { await api("/api/auth/logout", { method: "POST" }).catch(() => {}); S.me = null; S.catalog = null; stopPlay(); P.data = null; location.hash = "#/"; render(); return; }
   if (t.id === "heroPlay") return heroPlay();
@@ -765,7 +794,7 @@ document.addEventListener("submit", async (e) => {
     else if (f.id === "resetForm") { await api("/api/auth/reset", { method: "POST", body: { token: f.dataset.token, password: $("#p-pw").value } }); await boot(true); toast("Mot de passe enregistré"); location.hash = "#/parcours"; }
     else if (f.id === "newCourse") { const r = await api("/api/studio/courses", { method: "POST", body: { domain: $("#n-domain").value, template: $("#n-template").value, title: $("#n-title").value, level: $("#n-level").value, description: $("#n-desc").value, lang: $("#n-lang").value, lessonTitle: $("#n-ltitle").value, lines: $("#n-lines").value } }); studioMeta = null; toast("Brouillon créé"); location.hash = `#/studio/${r.id}`; }
     else if (f.id === "courseMeta") { await api(`/api/studio/courses/${f.dataset.course}`, { method: "PUT", body: { title: $("#m-title").value, domain: $("#m-domain").value, level: $("#m-level").value, lang: $("#m-lang").value, description: $("#m-desc").value } }); toast("Informations enregistrées"); render(); }
-    else if (f.id === "addLesson") { await api(`/api/studio/courses/${f.dataset.course}/lessons`, { method: "POST", body: { title: $("#a-title").value, goal: $("#a-goal").value, lines: $("#a-lines").value } }); toast("Leçon ajoutée"); render(); }
+    else if (f.id === "addLesson") { await api(`/api/studio/courses/${f.dataset.course}/lessons`, { method: "POST", body: { title: $("#a-title").value, goal: $("#a-goal").value, lines: $("#a-lines").value, module: $("#a-module").value, notes: $("#a-notes").value } }); toast("Leçon ajoutée"); render(); }
     else if (f.classList.contains("lessonForm")) { const fd = new FormData(f); await api(`/api/studio/lessons/${f.dataset.lesson}`, { method: "PUT", body: Object.fromEntries(fd) }); toast("Leçon enregistrée"); render(); }
     else if (f.id === "userSearch") { S.adminQ = $("#u-q").value; render(); }
     else if (f.id === "pricingForm") { const tiers = [...f.querySelectorAll("[data-tier]")].map((i) => Number(i.value)); const r = await api("/api/admin/pricing", { method: "PUT", body: { tiers, extra: Number($("#tier-extra").value) } }); S.pricing = r.pricing; toast("Tarif enregistré"); }

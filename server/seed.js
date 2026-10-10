@@ -1,25 +1,14 @@
 // Catalogue de départ : publié automatiquement au premier démarrage si la base est vide.
-const { one, run, tx } = require("./db");
-const { addLesson, DOMAIN_COLORS } = require("./content");
+const { one, all, run, tx, getSetting, setSetting, audit } = require("./db");
+const { addLesson, writeLessonContent, DOMAIN_COLORS } = require("./content");
+const EN = require("./courses/anglais");
 
 const S = (speaker, text, translation = "") => ({ speaker, text, translation });
 const Q = (say, prompt, options, answer, explanation) => ({ say, prompt, options, answer, explanation });
 
 const COURSES = [
-  { slug: "anglais", code: "EN-A1", big: "En", domain: "Langues", title: "Anglais", level: "Débutant · A1", lang: "en-GB", template: "Langue",
-    description: "Se présenter, parler de son travail, échanger avec des clients en Zambie, en Afrique du Sud ou en ligne.",
-    lessons: [
-      { title: "Se présenter", duration_min: 12, goal: "Tu sais maintenant te présenter en anglais.",
-        sentences: [S("A", "Hello! My name is Amani.", "Bonjour ! Je m’appelle Amani."), S("B", "Hi Amani, I’m Grace. Nice to meet you.", "Salut Amani, moi c’est Grace. Enchantée."), S("A", "Nice to meet you too. Where are you from?", "Enchanté aussi. Tu viens d’où ?"), S("B", "I’m from Lubumbashi. And you?", "Je viens de Lubumbashi. Et toi ?"), S("A", "I’m from Kinshasa. I’m a graphic designer.", "Je viens de Kinshasa. Je suis graphiste."), S("B", "Great! I’m learning English for my work.", "Super ! J’apprends l’anglais pour mon travail.")],
-        vocab: [{ term: "Nice to meet you", meaning: "Enchanté(e)" }, { term: "Where are you from?", meaning: "Tu viens d’où ?" }, { term: "I’m learning", meaning: "J’apprends" }, { term: "my work", meaning: "mon travail" }],
-        questions: [Q("Where are you from?", "Qu’as-tu entendu ?", ["Tu viens d’où ?", "Comment tu t’appelles ?", "Où travailles-tu ?"], 0, "« Where are you from? » sert à demander l’origine de quelqu’un."), Q("I’m learning English for my work.", "Pourquoi Grace apprend-elle l’anglais ?", ["Pour voyager", "Pour son travail", "Pour ses études"], 1, "« for my work » signifie « pour mon travail ».")] },
-      { title: "Parler de son métier", duration_min: 15, goal: "Tu sais maintenant présenter ton métier en anglais.",
-        sentences: [S("A", "What do you do?", "Qu’est-ce que tu fais dans la vie ?"), S("B", "I create logos and posters for small businesses.", "Je crée des logos et des affiches pour les petites entreprises."), S("A", "That sounds interesting. Do you work online?", "Ça a l’air intéressant. Tu travailles en ligne ?"), S("B", "Yes, I have clients in Zambia and South Africa.", "Oui, j’ai des clients en Zambie et en Afrique du Sud.")],
-        vocab: [{ term: "What do you do?", meaning: "Que fais-tu ?" }, { term: "small businesses", meaning: "petites entreprises" }, { term: "online", meaning: "en ligne" }],
-        questions: [Q("Do you work online?", "Qu’as-tu entendu ?", ["Tu travailles en ligne ?", "Tu travailles le matin ?", "Tu aimes ton travail ?"], 0, "« online » signifie « en ligne ».")] },
-      { title: "Fixer un rendez-vous", duration_min: 12, goal: "Tu sais proposer et confirmer un rendez-vous en anglais.",
-        sentences: [S("A", "Are you free on Monday?", "Es-tu libre lundi ?"), S("B", "Monday is difficult. What about Tuesday?", "Lundi, c’est difficile. Et mardi ?"), S("A", "Tuesday at ten o’clock is perfect.", "Mardi à dix heures, c’est parfait."), S("B", "Great, see you on Tuesday.", "Super, à mardi.")] },
-    ] },
+  { slug: "anglais", code: EN.meta.code, big: "En", domain: "Langues", title: "Anglais", level: EN.meta.level, lang: EN.meta.lang, template: "Langue",
+    description: EN.meta.description, lessons: EN.lessons },
   { slug: "portugais", code: "PT-A1", big: "Pt", domain: "Langues", title: "Portugais", level: "Débutant · A1", lang: "pt-BR", template: "Langue",
     description: "Portugais du Brésil pour communiquer avec l’Angola, le Mozambique et le Brésil : commerce, voyage, travail.",
     lessons: [
@@ -84,7 +73,34 @@ function seedIfEmpty() {
     const id = one("SELECT id FROM courses WHERE slug = ?", c.slug).id;
     for (const l of c.lessons) addLesson(id, l);
   }
+  setSetting(`content:${EN.slug}`, EN.VERSION);
   return true;
 }
 
-module.exports = { seedIfEmpty };
+// Met à jour un cours livré avec l'application quand sa version de contenu augmente.
+// Les leçons existantes sont mises à jour sur place (mêmes identifiants), pour conserver
+// la progression et les abonnements ; les audios enregistrés restent attachés aux phrases identiques.
+function syncCourse(pack) {
+  const key = `content:${pack.slug}`;
+  if (getSetting(key, 0) >= pack.VERSION) return null;
+  const c = one("SELECT id FROM courses WHERE slug = ?", pack.slug);
+  if (!c) return null;
+  tx(() => {
+    run("UPDATE courses SET code = ?, level = ?, lang = ?, description = ?, updated_at = datetime('now') WHERE id = ?", pack.meta.code, pack.meta.level, pack.meta.lang, pack.meta.description, c.id);
+    const existing = all("SELECT id FROM lessons WHERE course_id = ? ORDER BY position, id", c.id);
+    pack.lessons.forEach((l, i) => {
+      let id = existing[i] && existing[i].id;
+      if (id) run("UPDATE lessons SET position = ?, title = ?, duration_min = ?, goal = ?, module = ?, notes = ? WHERE id = ?", i + 1, l.title, l.duration_min, l.goal, l.module, l.notes, id);
+      else id = Number(run("INSERT INTO lessons(course_id, position, title, duration_min, goal, module, notes) VALUES(?, ?, ?, ?, ?, ?, ?)", c.id, i + 1, l.title, l.duration_min, l.goal, l.module, l.notes).lastInsertRowid);
+      writeLessonContent(id, { sentences: l.sentences, vocab: l.vocab, questions: l.questions });
+    });
+    for (const extra of existing.slice(pack.lessons.length)) run("DELETE FROM lessons WHERE id = ?", extra.id);
+    setSetting(key, pack.VERSION);
+  });
+  audit(null, "content.sync", { course: pack.slug, version: pack.VERSION, lessons: pack.lessons.length });
+  return pack.lessons.length;
+}
+
+function syncBundledContent() { return syncCourse(EN); }
+
+module.exports = { seedIfEmpty, syncBundledContent };

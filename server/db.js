@@ -151,6 +151,13 @@ CREATE INDEX IF NOT EXISTS idx_periods_user ON periods(user_id, course_id, end_a
 CREATE INDEX IF NOT EXISTS idx_orders_status ON orders(status, provider);
 `);
 
+// Migrations légères (colonnes ajoutées après la première version)
+function ensureColumn(table, col, def) {
+  if (!db.prepare(`PRAGMA table_info(${table})`).all().some((c) => c.name === col)) db.exec(`ALTER TABLE ${table} ADD COLUMN ${col} ${def}`);
+}
+ensureColumn("lessons", "module", "TEXT NOT NULL DEFAULT ''");
+ensureColumn("lessons", "notes", "TEXT NOT NULL DEFAULT ''");
+
 // Petits utilitaires
 const one = (sql, ...p) => db.prepare(sql).get(...p);
 const all = (sql, ...p) => db.prepare(sql).all(...p);

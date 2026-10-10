@@ -6,7 +6,7 @@ const zlib = require("node:zlib");
 const fs = require("node:fs");
 const { send, serveFile, HttpError } = require("./http");
 const { currentUser } = require("./auth");
-const { seedIfEmpty } = require("./seed");
+const { seedIfEmpty, syncBundledContent } = require("./seed");
 const { startReconciliation, providerName } = require("./billing");
 const routes = require("./routes");
 
@@ -89,6 +89,8 @@ const server = http.createServer(async (req, res) => {
 });
 
 const seeded = seedIfEmpty();
+const synced = syncBundledContent();
+if (synced) console.log(`Cours d'anglais mis à jour : ${synced} leçons`);
 startReconciliation();
 server.listen(PORT, () => {
   console.log(`NEXOMIA Academy en ligne sur le port ${PORT} · paiements : ${providerName()}${seeded ? " · catalogue de départ créé" : ""}`);

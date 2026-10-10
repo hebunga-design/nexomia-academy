@@ -91,7 +91,7 @@ r.get("/api/catalog", (ctx) => {
 r.get("/api/courses/:slug", (ctx) => {
   const c = one("SELECT * FROM courses WHERE slug = ?", ctx.params.slug);
   if (!courseVisible(ctx.user, c)) throw new HttpError(404, "Cours introuvable.");
-  const lessons = all("SELECT id, position, title, duration_min, course_id FROM lessons WHERE course_id = ? ORDER BY position", c.id).map((l) => {
+  const lessons = all("SELECT id, position, title, duration_min, course_id, module FROM lessons WHERE course_id = ? ORDER BY position", c.id).map((l) => {
     const p = ctx.user ? one("SELECT completed_at, best_score FROM progress WHERE user_id = ? AND lesson_id = ?", ctx.user.id, l.id) : null;
     return { ...l, locked: !hasAccess(ctx.user, l), completed: !!(p && p.completed_at), score: p ? p.best_score : null };
   });
@@ -102,7 +102,7 @@ r.get("/api/lessons/:id", (ctx) => {
   if (!l) throw new HttpError(404, "Leçon introuvable.");
   const c = one("SELECT * FROM courses WHERE id = ?", l.course_id);
   if (!courseVisible(ctx.user, c)) throw new HttpError(404, "Leçon introuvable.");
-  const lessons = all("SELECT id, position, title FROM lessons WHERE course_id = ? ORDER BY position", c.id);
+  const lessons = all("SELECT id, position, title, module FROM lessons WHERE course_id = ? ORDER BY position", c.id);
   const meta = { course: { id: c.id, slug: c.slug, title: c.title, code: c.code, lang: c.lang, color: c.color, status: c.status }, lessons, position: l.position };
   if (!hasAccess(ctx.user, l)) return send(ctx.res, 402, { locked: true, lesson: { id: l.id, title: l.title, position: l.position }, ...meta });
   const full = C.lessonFull(l.id);
@@ -270,7 +270,7 @@ r.post("/api/studio/courses/:id/lessons", async (ctx) => {
   const c = studioCourse(ctx, ctx.params.id);
   const b = await readJson(ctx.req);
   if (!C.parseLines(b.lines).length) throw new HttpError(400, "Ajoute au moins une phrase.");
-  const id = C.addLesson(c.id, { title: b.title, goal: b.goal, lines: b.lines });
+  const id = C.addLesson(c.id, { title: b.title, goal: b.goal, lines: b.lines, module: b.module, notes: b.notes });
   run("UPDATE courses SET updated_at = datetime('now') WHERE id = ?", c.id);
   ok(ctx, { id }, 201);
 });
@@ -283,8 +283,11 @@ r.put("/api/studio/lessons/:id", async (ctx) => {
   const sents = C.parseLines(b.lines);
   if (!sents.length) throw new HttpError(400, "Ajoute au moins une phrase.");
   tx(() => {
-    run("UPDATE lessons SET title = ?, goal = ?, duration_min = ? WHERE id = ?", String(b.title || l.title).slice(0, 120), String(b.goal ?? l.goal).slice(0, 300), Math.max(1, Math.min(120, Number(b.duration_min) || l.duration_min)), l.id);
-    C.writeLessonContent(l.id, { sentences: sents, vocab: sents.slice(0, 4).map((s) => ({ term: s.text, meaning: s.translation })), questions: C.autoQuestions(sents) });
+    run("UPDATE lessons SET title = ?, goal = ?, duration_min = ?, module = ?, notes = ? WHERE id = ?", String(b.title || l.title).slice(0, 120), String(b.goal ?? l.goal).slice(0, 300), Math.max(1, Math.min(120, Number(b.duration_min) || l.duration_min)), String(b.module ?? l.module).slice(0, 60), String(b.notes ?? l.notes).slice(0, 3000), l.id);
+    // Phrases inchangées : on garde le vocabulaire et les exercices rédigés à la main.
+    const before = all("SELECT speaker, text, translation FROM sentences WHERE lesson_id = ? ORDER BY position", l.id);
+    const same = before.length === sents.length && before.every((s, i) => s.text === sents[i].text && s.translation === sents[i].translation && s.speaker === sents[i].speaker);
+    if (!same) C.writeLessonContent(l.id, { sentences: sents, vocab: sents.slice(0, 4).map((s) => ({ term: s.text, meaning: s.translation })), questions: C.autoQuestions(sents) });
   });
   ok(ctx, { lesson: C.lessonFull(l.id) });
 });
