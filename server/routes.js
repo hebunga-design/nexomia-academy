@@ -8,6 +8,8 @@ const A = require("./auth");
 const B = require("./billing");
 const C = require("./content");
 const { pricing, totalFor, validatePricing } = require("./pricing");
+const L = require("./learning");
+const PLACEMENT = { anglais: require("./courses/anglais/placement") };
 
 const r = createRouter();
 const ok = (ctx, body, status = 200) => send(ctx.res, status, body);
@@ -95,7 +97,8 @@ r.get("/api/courses/:slug", (ctx) => {
     const p = ctx.user ? one("SELECT completed_at, best_score FROM progress WHERE user_id = ? AND lesson_id = ?", ctx.user.id, l.id) : null;
     return { ...l, locked: !hasAccess(ctx.user, l), completed: !!(p && p.completed_at), score: p ? p.best_score : null };
   });
-  ok(ctx, { course: { ...c, created_by: undefined, reviewed_by: undefined, subscribed_until: ctx.user ? B.activeEnd(ctx.user.id, c.id) : null }, lessons });
+  const certificates = ctx.user ? all("SELECT code, module FROM certificates WHERE user_id = ? AND course_id = ?", ctx.user.id, c.id) : [];
+  ok(ctx, { course: { ...c, created_by: undefined, reviewed_by: undefined, subscribed_until: ctx.user ? B.activeEnd(ctx.user.id, c.id) : null }, lessons, certificates, placement_test: !!PLACEMENT[c.slug] });
 });
 r.get("/api/lessons/:id", (ctx) => {
   const l = one("SELECT * FROM lessons WHERE id = ?", Number(ctx.params.id));
@@ -134,7 +137,14 @@ r.post("/api/progress", async (ctx) => {
        ON CONFLICT(user_id, lesson_id) DO UPDATE SET best_score = MAX(best_score, excluded.best_score),
        completed_at = COALESCE(completed_at, excluded.completed_at), last_sentence = excluded.last_sentence, updated_at = datetime('now')`,
     ctx.user.id, l.id, score, passed ? nowIso() : null, Math.max(0, Number(b.lastSentence) || 0));
-  ok(ctx, { passed, threshold: 80 });
+  let xp = 0, cert = null;
+  if (b.completed === true) {
+    const correct = Math.max(0, Math.min(20, Math.round(Number(b.correct) || 0)));
+    xp = L.lessonXp(ctx.user.id, l.id, correct, passed);
+    L.addToReview(ctx.user.id, l.id, all("SELECT term FROM vocab WHERE lesson_id = ?", l.id).map((v) => v.term));
+    if (passed) cert = L.maybeCertificate(ctx.user, l);
+  }
+  ok(ctx, { passed, threshold: 80, xp, certificate: cert, today: L.xpOn(ctx.user.id, L.today()), goal: ctx.user.daily_goal });
 });
 r.post("/api/listening", async (ctx) => {
   A.requireUser(ctx);
@@ -148,12 +158,9 @@ r.get("/api/me/dashboard", (ctx) => {
   const u = ctx.user.id;
   const seconds = one("SELECT COALESCE(SUM(seconds),0) AS s FROM listening WHERE user_id = ?", u).s;
   const completed = one("SELECT COUNT(*) AS n FROM progress WHERE user_id = ? AND completed_at IS NOT NULL", u).n;
-  const days = all("SELECT day FROM listening WHERE user_id = ? AND seconds > 0 ORDER BY day DESC LIMIT 60", u).map((d) => d.day);
-  // Série : jours consécutifs d'écoute, en comptant à partir d'aujourd'hui (ou d'hier).
-  const set = new Set(days); const iso = (x) => x.toISOString().slice(0, 10);
-  let streak = 0; const d = new Date();
-  if (!set.has(iso(d))) d.setUTCDate(d.getUTCDate() - 1);
-  while (set.has(iso(d))) { streak++; d.setUTCDate(d.getUTCDate() - 1); }
+  // Série : jours consécutifs d'activité (écoute ou exercices), à partir d'aujourd'hui (ou d'hier).
+  const set = L.activeDays(u); const days = [...set];
+  const streak = L.streakOf(set), best = L.bestStreak(set), xp = L.totalXp(u);
   const weekStart = new Date(); weekStart.setUTCDate(weekStart.getUTCDate() - ((weekStart.getUTCDay() + 6) % 7));
   const week = days.filter((x) => x >= weekStart.toISOString().slice(0, 10)).length;
   const courses = all(`SELECT c.id, c.slug, c.title, c.color,
@@ -167,7 +174,59 @@ r.get("/api/me/dashboard", (ctx) => {
     const l = one(`SELECT l.id, l.title, l.position, l.duration_min FROM lessons l LEFT JOIN progress p ON p.lesson_id = l.id AND p.user_id = ? WHERE l.course_id = ? AND p.completed_at IS NULL ORDER BY l.position LIMIT 1`, u, c.id);
     if (l) { next = { ...l, course: c.title, course_slug: c.slug, locked: !hasAccess(ctx.user, { ...l, course_id: c.id }) }; break; }
   }
-  ok(ctx, { minutes: Math.round(seconds / 60), completed, streak, week, courses, next, subs: B.activeSubs(u) });
+  const last7 = Array.from({ length: 7 }, (_, i) => { const x = new Date(); x.setUTCDate(x.getUTCDate() - (6 - i)); const day = x.toISOString().slice(0, 10); return { day, xp: L.xpOn(u, day), active: set.has(day) }; });
+  ok(ctx, { minutes: Math.round(seconds / 60), completed, streak, best, week, courses, next, subs: B.activeSubs(u),
+    xp, today: L.xpOn(u, L.today()), goal: ctx.user.daily_goal, last7, badges: L.badgesOf(u, { xp, best }),
+    certificates: L.certificatesOf(u), board: L.weeklyBoard(u), reviews: L.reviewCounts(u), placement: ctx.user.placement });
+});
+
+// ---------- Profil d'apprentissage ----------
+r.put("/api/me/profile", async (ctx) => {
+  A.requireUser(ctx);
+  const b = await readJson(ctx.req);
+  const goal = [10, 20, 30, 50].includes(Number(b.daily_goal)) ? Number(b.daily_goal) : ctx.user.daily_goal;
+  const motive = ["travail", "etudes", "voyage", "entreprise", "culture"].includes(b.motive) ? b.motive : ctx.user.motive;
+  const lang = ["fr", "en"].includes(b.ui_lang) ? b.ui_lang : ctx.user.ui_lang;
+  run("UPDATE users SET daily_goal = ?, motive = ?, ui_lang = ?, onboarded = CASE WHEN ? THEN 1 ELSE onboarded END WHERE id = ?", goal, motive, lang, b.onboarded ? 1 : 0, ctx.user.id);
+  ok(ctx, { ok: true, daily_goal: goal, motive, ui_lang: lang });
+});
+
+// ---------- Test de niveau ----------
+r.get("/api/placement/:slug", (ctx) => {
+  const qs = PLACEMENT[ctx.params.slug];
+  const c = one("SELECT id, title, lang FROM courses WHERE slug = ? AND status = 'published'", ctx.params.slug);
+  if (!qs || !c) throw new HttpError(404, "Pas de test de niveau pour ce cours.");
+  const starts = all("SELECT module, MIN(position) AS position, id, title FROM lessons WHERE course_id = ? AND module <> '' GROUP BY module ORDER BY position", c.id)
+    .map((x) => ({ level: x.module.split("·")[0].trim(), module: x.module, lesson_id: one("SELECT id FROM lessons WHERE course_id = ? AND position = ?", c.id, x.position).id }));
+  ok(ctx, { course: c, questions: qs, starts });
+});
+r.post("/api/me/placement", async (ctx) => {
+  A.requireUser(ctx);
+  const b = await readJson(ctx.req);
+  if (!PLACEMENT[b.slug] || !/^(A1|A2|B1|B2|C1|C2)$/.test(b.level)) throw new HttpError(400, "Résultat invalide.");
+  const p = { ...ctx.user.placement, [b.slug]: { level: b.level, score: Math.max(0, Math.min(100, Math.round(Number(b.score) || 0))), at: nowIso() } };
+  run("UPDATE users SET placement = ? WHERE id = ?", JSON.stringify(p), ctx.user.id);
+  const xp = L.award(ctx.user.id, "placement", b.slug, 30);
+  ok(ctx, { ok: true, placement: p, xp });
+});
+
+// ---------- Certificats (vérification publique) ----------
+r.get("/api/certificates/:code", (ctx) => {
+  const c = L.certificate(ctx.params.code);
+  if (!c) throw new HttpError(404, "Aucun certificat ne correspond à ce code.");
+  ok(ctx, { certificate: c });
+});
+
+// ---------- Révisions ----------
+r.get("/api/me/reviews", (ctx) => { A.requireUser(ctx); ok(ctx, { items: L.dueReviews(ctx.user.id), counts: L.reviewCounts(ctx.user.id) }); });
+r.post("/api/me/reviews", async (ctx) => {
+  A.requireUser(ctx);
+  const b = await readJson(ctx.req);
+  const results = Array.isArray(b.results) ? b.results.slice(0, 50) : [];
+  let known = 0;
+  for (const x of results) if (L.gradeReview(ctx.user.id, Number(x.lesson_id), String(x.item || ""), !!x.knew) && x.knew) known++;
+  const xp = results.length ? L.award(ctx.user.id, "review", L.today(), 5 + known * 2) : 0;
+  ok(ctx, { ok: true, xp, counts: L.reviewCounts(ctx.user.id) });
 });
 
 // ---------- Abonnements et paiements ----------

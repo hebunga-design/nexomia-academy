@@ -157,6 +157,46 @@ function ensureColumn(table, col, def) {
 }
 ensureColumn("lessons", "module", "TEXT NOT NULL DEFAULT ''");
 ensureColumn("lessons", "notes", "TEXT NOT NULL DEFAULT ''");
+ensureColumn("users", "daily_goal", "INTEGER NOT NULL DEFAULT 20");
+ensureColumn("users", "motive", "TEXT NOT NULL DEFAULT ''");
+ensureColumn("users", "placement", "TEXT NOT NULL DEFAULT '{}'");
+ensureColumn("users", "onboarded", "INTEGER NOT NULL DEFAULT 0");
+ensureColumn("users", "ui_lang", "TEXT NOT NULL DEFAULT 'fr'");
+db.exec(`
+CREATE TABLE IF NOT EXISTS xp_events (
+  id INTEGER PRIMARY KEY,
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  kind TEXT NOT NULL,
+  ref TEXT NOT NULL,
+  amount INTEGER NOT NULL,
+  day TEXT NOT NULL DEFAULT (date('now')),
+  at TEXT NOT NULL DEFAULT (datetime('now')),
+  UNIQUE (user_id, kind, ref)
+);
+CREATE INDEX IF NOT EXISTS idx_xp_user_day ON xp_events(user_id, day);
+CREATE TABLE IF NOT EXISTS certificates (
+  code TEXT PRIMARY KEY,
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  course_id INTEGER NOT NULL REFERENCES courses(id),
+  module TEXT NOT NULL,
+  name TEXT NOT NULL,
+  lessons INTEGER NOT NULL,
+  avg_score INTEGER NOT NULL,
+  issued_at TEXT NOT NULL DEFAULT (datetime('now')),
+  UNIQUE (user_id, course_id, module)
+);
+CREATE TABLE IF NOT EXISTS reviews (
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  item TEXT NOT NULL,
+  lesson_id INTEGER NOT NULL REFERENCES lessons(id) ON DELETE CASCADE,
+  box INTEGER NOT NULL DEFAULT 0,
+  due TEXT NOT NULL DEFAULT (date('now')),
+  seen INTEGER NOT NULL DEFAULT 0,
+  wrong INTEGER NOT NULL DEFAULT 0,
+  PRIMARY KEY (user_id, item, lesson_id)
+);
+CREATE INDEX IF NOT EXISTS idx_reviews_due ON reviews(user_id, due);
+`);
 
 // Petits utilitaires
 const one = (sql, ...p) => db.prepare(sql).get(...p);

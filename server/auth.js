@@ -37,9 +37,10 @@ function destroySession(req, res, secure) {
 function currentUser(req) {
   const t = parseCookies(req)[COOKIE];
   if (!t) return null;
-  const s = one(`SELECT u.id, u.name, u.email, u.phone, u.role, u.suspended, s.expires_at FROM sessions s JOIN users u ON u.id = s.user_id WHERE s.token_hash = ?`, sha(t));
+  const s = one(`SELECT u.id, u.name, u.email, u.phone, u.role, u.suspended, u.daily_goal, u.motive, u.placement, u.onboarded, u.ui_lang, s.expires_at FROM sessions s JOIN users u ON u.id = s.user_id WHERE s.token_hash = ?`, sha(t));
   if (!s || s.expires_at < new Date().toISOString() || s.suspended) return null;
-  return { id: s.id, name: s.name, email: s.email, phone: s.phone, role: s.role };
+  let placement = {}; try { placement = JSON.parse(s.placement || "{}"); } catch {}
+  return { id: s.id, name: s.name, email: s.email, phone: s.phone, role: s.role, daily_goal: s.daily_goal, motive: s.motive, placement, onboarded: !!s.onboarded, ui_lang: s.ui_lang };
 }
 
 // Limitation simple des tentatives (en mémoire, par IP + identifiant)

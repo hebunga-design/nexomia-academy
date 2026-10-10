@@ -176,6 +176,7 @@ const routes = [
   [/^#\/parcours$/, vDash, "auth"], [/^#\/abonnements$/, vSubs], [/^#\/connexion$/, vLogin], [/^#\/inscription$/, vRegister],
   [/^#\/reinitialiser\/([\w-]+)$/, vReset], [/^#\/recuperation$/, vRecover], [/^#\/studio$/, vStudio, "creator"], [/^#\/studio\/(\d+)$/, vStudioCourse, "creator"],
   [/^#\/admin$/, vAdmin, "admin"],
+  [/^#\/test-niveau\/([\w-]+)$/, vPlacement], [/^#\/bienvenue$/, vWelcome, "auth"], [/^#\/certificat\/([\w-]+)$/, vCertificate], [/^#\/revision$/, vReview, "auth"],
 ];
 function parseHash() { const h = location.hash || "#/"; const [p, q] = h.split("?"); return { path: p, query: new URLSearchParams(q || "") }; }
 let renderId = 0;
@@ -299,14 +300,17 @@ function richNotes(t) {
 }
 async function vCourse(slug) {
   await loadCatalog();
-  const { course: c, lessons } = await api(`/api/courses/${encodeURIComponent(slug)}`);
+  const { course: c, lessons, certificates = [], placement_test } = await api(`/api/courses/${encodeURIComponent(slug)}`);
+  const certOf = (m) => certificates.find((x) => x.module === m);
+  const myLevel = S.me && S.me.placement && S.me.placement[slug];
   const sub = c.subscribed_until;
   return `<a class="back" href="#/cours">${I.back} Tous les cours</a>
   <div class="course-hero" style="background:${esc(c.color)}"><div><p class="eyebrow" style="color:#fff;opacity:.8">${esc(c.domain)} · ${esc(c.code)}</p><h1 style="margin:8px 0">${esc(c.title)}</h1><p>${esc(c.level)} · ${lessons.length} leçon${lessons.length > 1 ? "s" : ""}</p></div><span class="big" aria-hidden="true">${esc(c.big)}</span></div>
   ${c.status !== "published" ? `<div class="review-note">Aperçu équipe : ce cours n’est pas encore publié.</div>` : ""}
   <div class="dash">
-    <div style="min-width:0">${modulesNav(lessons)}${groupByModule(lessons).map(([mod, ls], gi) => `<section class="modsec" id="mod-${gi}">
-      ${mod ? `<div class="modhead"><h2>${esc(mod)}</h2><span class="muted">${ls.filter((l) => l.completed).length}/${ls.length} leçon${ls.length > 1 ? "s" : ""}</span></div>` : ""}
+    <div style="min-width:0">${placement_test ? `<div class="ptbanner">${myLevel ? `<span>Ton niveau : <b>${esc(myLevel.level)} · ${esc(LEVEL_FR[myLevel.level] || "")}</b></span><a class="btn btn-ghost btn-sm" href="#/test-niveau/${esc(slug)}">Refaire le test</a>` : `<span><b>Pas sûr de ton niveau ?</b><br><small class="muted">10 minutes pour savoir où commencer, de A1 à C2.</small></span><a class="btn btn-primary btn-sm" href="#/test-niveau/${esc(slug)}">Passer le test</a>`}</div>` : ""}${modulesNav(lessons)}${groupByModule(lessons).map(([mod, ls], gi) => `<section class="modsec" id="mod-${gi}">
+      ${mod ? `<div class="modhead"><h2>${esc(mod)}</h2><span class="muted">${ls.filter((l) => l.completed).length}/${ls.length} leçon${ls.length > 1 ? "s" : ""}</span></div>
+      ${certOf(mod) ? `<a class="certitem" style="margin-bottom:10px" href="#/certificat/${esc(certOf(mod).code)}"><span class="cert-lv">${esc(mod.split("·")[0].trim())}</span><span><b>Niveau validé</b><br><small class="muted">Voir et télécharger mon certificat</small></span></a>` : ""}` : ""}
       <div class="llist">${ls.map((l) => `<a class="lrow ${l.completed ? "done" : ""} ${l.locked ? "locked" : ""}" href="#/lecon/${l.id}" style="text-decoration:none;color:inherit">
       <span class="num">${l.completed ? "✓" : l.position}</span><span style="min-width:0"><b>${esc(l.title)}</b><br><span class="st">${l.duration_min} min${l.position === 1 && !sub ? " · gratuite" : ""}${l.score !== null && l.score !== undefined ? ` · meilleur score ${l.score} %` : ""}</span></span>
       <span class="st">${l.locked ? "Abonnement" : l.completed ? "Terminée" : "Écouter"}</span></a>`).join("")}</div></section>`).join("")}</div>
@@ -339,7 +343,7 @@ async function vLesson(id) {
   const l = d.lesson, c = d.course;
   const next = d.lessons.find((x) => x.position === l.position + 1);
   const voiceMissing = l.sentences.some((s) => !s.audio) && Speech.ok && Speech.voices.length && !Speech.pick(c.lang);
-  Q.state = { i: 0, correct: 0, picked: null };
+  Q.items = buildExercises(l, c.lang); Q.state = newQuizState();
   const audioCount = l.sentences.filter((s) => s.audio).length;
   return `<a class="back" href="#/cours/${esc(c.slug)}">${I.back} ${esc(c.title)}</a>
   <div class="lesson"><div style="min-width:0">
@@ -360,30 +364,101 @@ async function vLesson(id) {
     ${next ? `<a class="btn btn-ghost" href="#/lecon/${next.id}">Leçon suivante : ${esc(next.title)}</a>` : ""}
   </aside></div>`;
 }
-const Q = { state: null };
-function quizHTML() {
-  const d = P.data, qs = d.lesson.questions, st = Q.state;
-  if (!qs.length) return `<p class="eyebrow">Fin de leçon</p><h3 style="font-size:18px;margin:8px 0 12px">As-tu tout écouté ?</h3><button class="btn btn-primary" style="width:100%" data-finish>Terminer la leçon</button>`;
-  const q = qs[st.i], ans = st.picked !== null;
-  return `<p class="eyebrow">Exercice d’écoute ${st.i + 1}/${qs.length}</p>
-    <h3 style="font-size:18px;margin:8px 0 10px">${esc(q.prompt)}</h3>
-    <button class="btn btn-dark btn-sm" data-say="${esc(q.say)}">${I.spk} Écouter l’extrait</button>
-    ${q.options.map((o, i) => `<button class="opt ${ans && i === q.answer ? "right" : ""} ${ans && i === st.picked && i !== q.answer ? "wrong" : ""}" data-pick="${i}" ${ans ? "disabled" : ""}>${esc(o)}</button>`).join("")}
-    ${ans ? `<div class="feedback"><b style="color:${st.picked === q.answer ? "var(--ok)" : "var(--bad)"}">${st.picked === q.answer ? "Bien entendu !" : "Pas tout à fait."}</b> ${esc(q.explanation).replace(/\*\*(.+?)\*\*/g, "<b>$1</b>")}</div>
-    <button class="btn btn-primary" style="width:100%;margin-top:12px" data-qnext>${st.i + 1 < qs.length ? "Question suivante" : "Voir mon résultat"}</button>` : ""}`;
+/* ================= Exercices ================= */
+// Les exercices d'écoute rédigés pour la leçon, complétés par des exercices générés
+// à partir du dialogue : mots dans l'ordre, phrase à compléter, dictée.
+const Q = { state: null, items: [] };
+const norm = (t) => String(t).toLowerCase().replace(/[’‘`]/g, "'").replace(/[^\p{L}\p{N}' ]+/gu, " ").replace(/\s+/g, " ").trim();
+function seeded(seed) { let x = seed % 2147483647 || 1; return () => (x = (x * 16807) % 2147483647) / 2147483647; }
+function shuffleWith(a, rnd) { const b = a.slice(); for (let i = b.length - 1; i > 0; i--) { const j = Math.floor(rnd() * (i + 1)); [b[i], b[j]] = [b[j], b[i]]; } return b; }
+const clean = (w) => w.replace(/[^\p{L}’']/gu, "");
+function buildExercises(lesson, lang) {
+  const items = lesson.questions.map((q) => ({ type: "listen", ...q }));
+  if (/^fr/i.test(lang)) return items;
+  const rnd = seeded(lesson.id * 7919 + 13);
+  const words = (t) => t.split(/\s+/).filter(Boolean);
+  const pool = lesson.sentences.filter((x) => x.translation && words(x.text).length >= 3);
+  const used = new Set();
+  const pick = (ok) => { const c = shuffleWith(pool.filter((x) => !used.has(x.text) && ok(x)), rnd)[0]; if (c) used.add(c.text); return c; };
+  // 1. Remettre les mots dans l'ordre
+  const o = pick((x) => { const n = words(x.text).length; return n >= 4 && n <= 10; });
+  if (o) {
+    const toks = words(o.text).map((w) => w.replace(/[.,!?;:…]+$/, "")); let tiles = shuffleWith(toks.map((w, i) => ({ w, i })), rnd);
+    if (tiles.every((t, k) => t.i === k)) tiles = tiles.slice(1).concat(tiles[0]);
+    items.push({ type: "order", text: o.text, tr: o.translation, tiles });
+  }
+  // 2. Compléter la phrase
+  const allWords = [...new Set(lesson.sentences.flatMap((x) => words(x.text)).map(clean).filter((w) => w.length >= 3))];
+  const g = pick((x) => words(x.text).some((w) => clean(w).length >= 4));
+  if (g) {
+    const cands = words(g.text).map((w, i) => ({ w: clean(w), i })).filter((x) => x.w.length >= 4).sort((a, b) => b.w.length - a.w.length);
+    const target = cands[Math.floor(rnd() * Math.min(2, cands.length))];
+    const wrong = shuffleWith(allWords.filter((w) => w.toLowerCase() !== target.w.toLowerCase() && Math.abs(w.length - target.w.length) <= 4), rnd).slice(0, 2);
+    if (wrong.length === 2) {
+      const options = shuffleWith([target.w, ...wrong], rnd);
+      const shown = words(g.text).map((w, i) => i === target.i ? w.replace(target.w, "_____") : w).join(" ");
+      items.push({ type: "gap", say: g.text, shown, tr: g.translation, options, answer: options.indexOf(target.w) });
+    }
+  }
+  // 3. Dictée
+  const dct = pick((x) => words(x.text).length <= 9);
+  if (dct) items.push({ type: "dict", say: dct.text, text: dct.text, tr: dct.translation });
+  return items;
 }
+// Compare la dictée mot à mot (distance d'édition) : tolère une petite faute.
+function dictScore(typed, ref) {
+  const a = norm(typed).split(" ").filter(Boolean), b = norm(ref).split(" ").filter(Boolean);
+  const d = Array.from({ length: a.length + 1 }, (_, i) => [i, ...Array(b.length).fill(0)]);
+  for (let j = 1; j <= b.length; j++) d[0][j] = j;
+  for (let i = 1; i <= a.length; i++) for (let j = 1; j <= b.length; j++) d[i][j] = Math.min(d[i - 1][j] + 1, d[i][j - 1] + 1, d[i - 1][j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+  return b.length ? Math.max(0, 1 - d[a.length][b.length] / b.length) : 0;
+}
+const md = (t) => esc(t).replace(/\*\*(.+?)\*\*/g, "<b>$1</b>");
+const TYPE_LABEL = { listen: "Écoute", order: "Mots dans l’ordre", gap: "Phrase à compléter", dict: "Dictée" };
+function quizHTML() {
+  const items = Q.items, st = Q.state;
+  if (!items.length) return `<p class="eyebrow">Fin de leçon</p><h3 style="font-size:18px;margin:8px 0 12px">As-tu tout écouté ?</h3><button class="btn btn-primary" style="width:100%" data-finish>Terminer la leçon</button>`;
+  const q = items[st.i], done = st.result !== null;
+  const head = `<div class="qhead"><p class="eyebrow">${TYPE_LABEL[q.type]} · ${st.i + 1}/${items.length}</p><div class="qdots" aria-hidden="true">${items.map((_, k) => `<i class="${k < st.i || (k === st.i && done) ? (st.marks[k] ? "ok" : "ko") : k === st.i ? "cur" : ""}"></i>`).join("")}</div></div>`;
+  const nextBtn = done ? `<div class="feedback ${st.result ? "good" : "bad"}" role="status"><b>${st.result ? ["Bien joué !", "Excellent !", "Parfait !", "Bien entendu !"][st.i % 4] : "Pas tout à fait."}</b> ${st.fb || ""}</div>
+    <button class="btn btn-primary" style="width:100%;margin-top:12px" data-qnext>${st.i + 1 < items.length ? "Continuer" : "Voir mon résultat"}</button>` : "";
+  if (q.type === "listen" || q.type === "gap") {
+    const title = q.type === "gap" ? `<h3 class="qtitle">Complète la phrase</h3><p class="gap-line">${esc(q.shown)}</p><p class="muted" style="font-size:14px;margin-bottom:10px">${esc(q.tr)}</p>` : `<h3 class="qtitle">${esc(q.prompt)}</h3>`;
+    return `${head}${title}
+      <button class="btn btn-dark btn-sm" data-say="${esc(q.say)}">${I.spk} Écouter${q.type === "gap" ? " la phrase" : " l’extrait"}</button>
+      <div class="opts" role="group">${q.options.map((o, i) => `<button class="opt ${done && i === q.answer ? "right" : ""} ${done && i === st.picked && i !== q.answer ? "wrong" : ""}" data-pick="${i}" ${done ? "disabled" : ""}>${esc(o)}</button>`).join("")}</div>${nextBtn}`;
+  }
+  if (q.type === "order") {
+    const chosen = st.chosen;
+    return `${head}<h3 class="qtitle">Remets les mots dans l’ordre</h3><p class="muted" style="font-size:14px">${esc(q.tr)}</p>
+      <div class="answer-line ${done ? (st.result ? "good" : "bad") : ""}" aria-live="polite">${chosen.length ? chosen.map((k, pos) => `<button class="tile" data-untile="${pos}" ${done ? "disabled" : ""}>${esc(q.tiles[k].w)}</button>`).join("") : `<span class="muted" style="font-size:14px">Touche les mots dans le bon ordre</span>`}</div>
+      <div class="tiles">${q.tiles.map((t, k) => `<button class="tile ${chosen.includes(k) ? "used" : ""}" data-tile="${k}" ${chosen.includes(k) || done ? "disabled" : ""}>${esc(t.w)}</button>`).join("")}</div>
+      ${done ? nextBtn : `<button class="btn btn-primary" style="width:100%;margin-top:12px" data-check ${chosen.length === q.tiles.length ? "" : "disabled"}>Vérifier</button>`}`;
+  }
+  return `${head}<h3 class="qtitle">Écoute et écris la phrase</h3>
+    <div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn btn-dark btn-sm" data-say="${esc(q.say)}">${I.spk} Écouter</button><button class="btn btn-ghost btn-sm" data-sayslow="${esc(q.say)}">Plus lentement</button></div>
+    <label class="sr" for="dictIn">Ta réponse</label>
+    <textarea id="dictIn" class="dict-in" rows="2" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="Écris ce que tu entends…" ${done ? "disabled" : ""}>${esc(st.typed || "")}</textarea>
+    ${done ? `<p class="dict-ref"><b>${esc(q.text)}</b><br><span class="muted">${esc(q.tr)}</span></p>${nextBtn}` : `<button class="btn btn-primary" style="width:100%;margin-top:12px" data-check>Vérifier</button>`}`;
+}
+function answerItem(ok, fb) { const st = Q.state; st.result = ok; st.fb = fb; st.marks[st.i] = ok; if (ok) st.correct++; $("#quiz").innerHTML = quizHTML(); const n = $("#quiz [data-qnext]"); if (n) n.focus({ preventScroll: true }); }
+function newQuizState() { return { i: 0, correct: 0, picked: null, result: null, fb: "", chosen: [], typed: "", marks: [] }; }
 async function finishLesson() {
-  const d = P.data, qs = d.lesson.questions;
+  const d = P.data, qs = Q.items;
   const score = qs.length ? Math.round((Q.state.correct / qs.length) * 100) : 100;
   stopPlay(); flushListening();
   let passed = score >= 80;
-  if (S.me) { try { passed = (await api("/api/progress", { method: "POST", body: { lessonId: d.lesson.id, score, completed: true, lastSentence: P.idx } })).passed; } catch {} }
+  let res = null;
+  if (S.me) { try { res = await api("/api/progress", { method: "POST", body: { lessonId: d.lesson.id, score, correct: Q.state.correct, completed: true, lastSentence: P.idx } }); passed = res.passed; } catch {} }
   const next = d.lessons.find((x) => x.position === d.lesson.position + 1);
   const cols = ["var(--green)", "var(--navy)", "var(--sage)", "var(--pale)"];
   $("#layer").innerHTML = `<div class="overlay" id="ov"><div class="celebrate" role="dialog" aria-modal="true" aria-labelledby="ct">
     ${passed ? `<div class="cgrid">${Array.from({ length: 8 }, (_, i) => `<span style="background:${cols[i % 4]};animation-delay:${i * 0.08}s"></span>`).join("")}</div>` : motif(72)}
     <p class="eyebrow">${passed ? "Leçon validée" : "Presque"} · ${score} %</p><h2 id="ct" style="margin:8px 0 10px">${passed ? "Bravo !" : "Encore un petit effort"}</h2>
-    <p class="muted" style="font-size:17px">${passed ? esc(d.lesson.goal || "Tu as terminé cette leçon.") : "Il faut 80 % pour valider. Réécoute les phrases en mode phrase par phrase, puis refais l’exercice."}</p>
+    <p class="muted" style="font-size:17px">${passed ? esc(d.lesson.goal || "Tu as terminé cette leçon.") : "Il faut 80 % pour valider. Réécoute les phrases en mode phrase par phrase, puis refais les exercices."}</p>
+    ${res ? `<div class="gain"><span class="pill xp">⚡ +${res.xp} points</span><span class="gain-goal"><i style="width:${Math.min(100, Math.round((res.today / res.goal) * 100))}%"></i></span><small>${res.today >= res.goal ? "Objectif du jour atteint !" : `Objectif du jour : ${res.today} / ${res.goal}`}</small></div>` : ""}
+    ${res && res.certificate ? `<a class="certwin" href="#/certificat/${esc(res.certificate.code)}" data-close><span class="cert-lv">${esc(res.certificate.module.split("·")[0].trim())}</span><span><b>Niveau terminé !</b><br><small>Ton certificat ${esc(res.certificate.module)} est prêt. Ouvre-le.</small></span></a>` : ""}
+    <p class="muted" style="font-size:14px;margin-top:8px">${Q.state.correct} bonne${Q.state.correct > 1 ? "s" : ""} réponse${Q.state.correct > 1 ? "s" : ""} sur ${qs.length}</p>
     ${!S.me ? `<p class="muted" style="font-size:14px;margin-top:10px">Crée un compte gratuit pour enregistrer ta progression.</p>` : ""}
     <div style="display:grid;gap:10px;margin-top:22px">
       ${passed ? (next ? `<a class="btn btn-primary" href="#/lecon/${next.id}" data-close>Leçon suivante : ${esc(next.title)}</a>` : `<a class="btn btn-primary" href="${S.me ? "#/parcours" : "#/cours"}" data-close>${S.me ? "Voir mon parcours" : "Voir les cours"}</a>`) : `<button class="btn btn-primary" data-retry>Réécouter et réessayer</button>`}
@@ -404,26 +479,216 @@ async function downloadOffline(id, btn) {
   } catch { btn.disabled = false; btn.textContent = "Échec du téléchargement, réessaie"; }
 }
 
+/* ================= Test de niveau ================= */
+const LEVELS = ["A1", "A2", "B1", "B2", "C1", "C2"];
+const LEVEL_FR = { A1: "Débutant", A2: "Élémentaire", B1: "Intermédiaire", B2: "Intermédiaire avancé", C1: "Avancé", C2: "Maîtrise" };
+const PT = { data: null, q: [], i: 0, byLevel: {}, picked: null, done: false, result: null };
+async function vPlacement(slug) {
+  stopPlay();
+  const d = await api(`/api/placement/${encodeURIComponent(slug)}`);
+  PT.data = d; PT.slug = slug; PT.i = -1; PT.byLevel = {}; PT.picked = null; PT.result = null;
+  const rnd = seeded(Date.now() % 100000 + 7);
+  PT.q = d.questions.map((q) => { const opts = shuffleWith(q.options.map((o, k) => ({ o, k })), rnd); return { ...q, options: opts.map((x) => x.o), answer: opts.findIndex((x) => x.k === q.answer) }; });
+  return `<a class="back" href="#/cours/${esc(slug)}">${I.back} ${esc(d.course.title)}</a><div class="ptest card" id="ptest">${placementHTML()}</div>`;
+}
+function placementHTML() {
+  const d = PT.data;
+  if (PT.result) {
+    const r = PT.result, start = d.starts.find((s) => s.level === r.start) || d.starts[0];
+    return `<div class="ptest-result">${motif(72)}
+      <p class="eyebrow">Ton résultat</p>
+      <div class="levelbadge" aria-hidden="true">${esc(r.start)}</div>
+      <h1 style="font-size:clamp(28px,5vw,40px)">Commence au niveau ${esc(r.start)} · ${esc(LEVEL_FR[r.start])}</h1>
+      <p class="muted" style="max-width:46ch;margin:10px auto 0">${r.mastered ? `Tu maîtrises déjà les bases jusqu’au niveau ${esc(r.mastered)}. ` : ""}${r.correct} bonnes réponses sur ${r.total}. Tu peux toujours revenir aux niveaux précédents pour réviser.</p>
+      <div class="lvlscale" aria-label="Échelle des niveaux">${LEVELS.map((L) => `<span class="${L === r.start ? "cur" : LEVELS.indexOf(L) < LEVELS.indexOf(r.start) ? "past" : ""}">${L}</span>`).join("")}</div>
+      <div style="display:grid;gap:10px;max-width:360px;margin:22px auto 0">
+        <a class="btn btn-primary" href="#/lecon/${start.lesson_id}">Commencer au niveau ${esc(r.start)}</a>
+        <a class="btn btn-ghost" href="#/cours/${esc(PT.slug)}">Voir toutes les leçons</a>
+        ${S.me ? "" : `<p class="muted" style="font-size:14px">Crée un compte gratuit pour garder ce résultat.</p><a class="btn btn-ghost" href="#/inscription?next=${encodeURIComponent("#/parcours")}">Créer mon compte</a>`}
+      </div></div>`;
+  }
+  if (PT.i < 0) return `<div style="text-align:center">${motif(64)}<p class="eyebrow" style="margin-top:14px">Test de niveau · ${esc(d.course.title)}</p>
+    <h1 style="font-size:clamp(28px,5vw,40px);margin:8px 0">Trouve ton point de départ</h1>
+    <p class="muted" style="max-width:48ch;margin:0 auto">Environ 10 minutes. Les questions deviennent plus difficiles au fil du test, qui s’arrête dès que tu atteins ton niveau. Pas de stress : ce n’est pas un examen.</p>
+    <ul class="ticks" style="text-align:left;max-width:360px;margin:18px auto 0"><li>Grammaire, vocabulaire et écoute</li><li>Du niveau A1 (débutant) au C2 (maîtrise)</li><li>Mets le son pour les questions d’écoute</li></ul>
+    <button class="btn btn-primary" style="margin-top:20px" data-ptstart>Commencer le test</button></div>`;
+  const q = PT.q[PT.i], ans = PT.picked !== null, lv = q.level;
+  const progress = Math.round((PT.i / PT.q.length) * 100);
+  return `<div class="ptop"><span class="eyebrow">Niveau ${esc(lv)} · question ${PT.i + 1}</span><button class="btn btn-ghost btn-sm" data-ptquit>Arrêter</button></div>
+    <div class="pbar" role="progressbar" aria-valuenow="${progress}" aria-valuemin="0" aria-valuemax="100"><i style="width:${Math.max(3, progress)}%"></i></div>
+    <h2 class="pq">${esc(q.prompt)}</h2>
+    ${q.say ? `<button class="btn btn-dark btn-sm" data-ptsay="${esc(q.say)}">${I.spk} Écouter</button>` : ""}
+    <div class="opts" role="group" style="margin-top:6px">${q.options.map((o, k) => `<button class="opt ${ans && k === q.answer ? "right" : ""} ${ans && k === PT.picked && k !== q.answer ? "wrong" : ""}" data-ptpick="${k}" ${ans ? "disabled" : ""}>${esc(o)}</button>`).join("")}</div>
+    ${ans ? `<button class="btn btn-primary" style="width:100%;margin-top:14px" data-ptnext>Continuer</button>` : ""}`;
+}
+async function placementNext() {
+  // On s'arrête à la fin d'un niveau si moins de 3 bonnes réponses sur 4.
+  const q = PT.q[PT.i], nextQ = PT.q[PT.i + 1];
+  if (!nextQ || nextQ.level !== q.level) {
+    const r = PT.byLevel[q.level] || 0;
+    if (r < 3 || !nextQ) return placementFinish();
+  }
+  PT.i++; PT.picked = null; $("#ptest").innerHTML = placementHTML();
+}
+async function placementFinish() {
+  const levels = LEVELS.filter((L) => PT.q.some((q) => q.level === L));
+  let mastered = null;
+  for (const L of levels) { if ((PT.byLevel[L] || 0) >= 3) mastered = L; else break; }
+  const start = mastered ? (levels[levels.indexOf(mastered) + 1] || "C2") : "A1";
+  const total = PT.i + 1, correct = Object.values(PT.byLevel).reduce((a, b) => a + b, 0);
+  PT.result = { start, mastered, correct, total };
+  const payload = { slug: PT.slug, level: start, score: Math.round((correct / total) * 100) };
+  if (S.me) { try { const r = await api("/api/me/placement", { method: "POST", body: payload }); S.me.placement = r.placement; if (r.xp) toast(`+${r.xp} points`); } catch {} }
+  else store.set("pendingPlacement", payload);
+  $("#ptest").innerHTML = placementHTML(); window.scrollTo(0, 0);
+}
+
+/* ================= Accueil guidé ================= */
+const OB = { step: 0, motive: "", goal: 20 };
+const MOTIVES = [["travail", "Pour mon travail", "Clients, réunions, entretiens"], ["etudes", "Pour mes études", "Cours, examens, bourses"], ["voyage", "Pour voyager", "Zambie, Afrique du Sud, ailleurs"], ["entreprise", "Pour mon entreprise", "Vendre, négocier, exporter"], ["culture", "Par plaisir", "Films, musique, culture"]];
+const GOALS = [[10, "Détente", "environ 5 min par jour"], [20, "Régulier", "environ 10 min par jour"], [30, "Sérieux", "environ 15 min par jour"], [50, "Intense", "20 min et plus par jour"]];
+function vWelcome() {
+  if (!S.me) { location.hash = "#/inscription"; return ""; }
+  OB.step = 0; OB.motive = S.me.motive || ""; OB.goal = S.me.daily_goal || 20;
+  return `<div class="onb card" id="onb">${welcomeHTML()}</div>`;
+}
+function welcomeHTML() {
+  const dots = `<div class="onb-dots" aria-hidden="true">${[0, 1, 2].map((i) => `<i class="${i <= OB.step ? "on" : ""}"></i>`).join("")}</div>`;
+  if (OB.step === 0) return `${dots}<p class="eyebrow">Bienvenue, ${esc(S.me.name.split(" ")[0])}</p><h1 class="onb-h">Pourquoi apprends-tu ?</h1><p class="muted">Nous adaptons les exemples et les rappels à ton objectif.</p>
+    <div class="choice-list">${MOTIVES.map(([k, t, s]) => `<button class="choice" data-obmotive="${k}" aria-pressed="${OB.motive === k}"><b>${t}</b><small>${s}</small></button>`).join("")}</div>
+    <button class="btn btn-primary onb-next" data-obnext ${OB.motive ? "" : "disabled"}>Continuer</button>`;
+  if (OB.step === 1) return `${dots}<p class="eyebrow">Ton rythme</p><h1 class="onb-h">Quel objectif chaque jour ?</h1><p class="muted">Une leçon rapporte environ 20 à 30 points. Tu pourras changer d’objectif à tout moment.</p>
+    <div class="choice-list">${GOALS.map(([g, t, s]) => `<button class="choice" data-obgoal="${g}" aria-pressed="${OB.goal === g}"><b>${t} · ${g} points</b><small>${s}</small></button>`).join("")}</div>
+    <div class="onb-nav"><button class="btn btn-ghost" data-obback>Retour</button><button class="btn btn-primary" data-obnext>Continuer</button></div>`;
+  return `${dots}<p class="eyebrow">Ton niveau</p><h1 class="onb-h">Par où commencer ?</h1><p class="muted">Le test de niveau te place directement au bon endroit du cours d’anglais.</p>
+    <div class="choice-list"><button class="choice" data-obfinish="test"><b>Passer le test de niveau</b><small>10 minutes, de A1 à C2 · recommandé</small></button>
+    <button class="choice" data-obfinish="start"><b>Je débute en anglais</b><small>Commencer au niveau A1, leçon 1</small></button>
+    <button class="choice" data-obfinish="browse"><b>Voir tous les cours</b><small>Portugais, design, numérique, entrepreneuriat…</small></button></div>
+    <div class="onb-nav"><button class="btn btn-ghost" data-obback>Retour</button></div>`;
+}
+async function welcomeFinish(choice) {
+  try { await api("/api/me/profile", { method: "PUT", body: { motive: OB.motive, daily_goal: OB.goal, onboarded: true } }); Object.assign(S.me, { motive: OB.motive, daily_goal: OB.goal, onboarded: true }); } catch (e) { toast(e.message, true); }
+  if (choice === "test") location.hash = "#/test-niveau/anglais";
+  else if (choice === "start") { const c = (await loadCatalog()).find((x) => x.slug === "anglais"); location.hash = c ? `#/lecon/${c.first_lesson}` : "#/cours"; }
+  else location.hash = "#/cours";
+}
+
+/* ================= Certificat ================= */
+async function vCertificate(code) {
+  const { certificate: c } = await api(`/api/certificates/${encodeURIComponent(code)}`);
+  const lvl = c.module.split("·")[0].trim(), url = `${location.origin}/#/certificat/${c.code}`;
+  return `<div class="cert-actions noprint"><a class="back" href="${S.me ? "#/parcours" : "#/"}">${I.back} ${S.me ? "Mon parcours" : "Accueil"}</a>
+      <div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn btn-primary btn-sm" data-print>${I.dl} Télécharger en PDF</button><button class="btn btn-ghost btn-sm" data-copy="${esc(url)}">Copier le lien de vérification</button></div></div>
+    <article class="cert" aria-label="Certificat">
+      <div class="cert-in">
+        <div class="cert-top">${motif(56)}<div><b class="cert-brand">NEXOMIA Academy</b><small>Lubumbashi · République démocratique du Congo</small></div></div>
+        <p class="eyebrow cert-eyebrow">Certificat de réussite</p>
+        <p class="cert-small">Ce certificat atteste que</p>
+        <h1 class="cert-name">${esc(c.name)}</h1>
+        <p class="cert-small">a validé l’ensemble du niveau</p>
+        <p class="cert-level"><span class="cert-lv">${esc(lvl)}</span> ${esc(c.course)} · ${esc(c.module.split("·")[1] ? c.module.split("·")[1].trim() : "")}</p>
+        <p class="cert-small">${c.lessons} leçons audio et exercices · score moyen de ${c.avg_score} % · niveau aligné sur le Cadre européen commun de référence (CECRL)</p>
+        <div class="cert-foot">
+          <div><small>Délivré le</small><b>${fmtD(c.issued_at)}</b></div>
+          <div><small>Code de vérification</small><b class="mono">${esc(c.code)}</b></div>
+          <div><small>Pour NEXOMIA SARL</small><b>Héritier Ebunga Muloko</b><small>Fondateur</small></div>
+        </div>
+        <p class="cert-verify">Vérifier l’authenticité : ${esc(location.host)}/#/certificat/${esc(c.code)}</p>
+      </div>
+    </article>`;
+}
+
+/* ================= Révision ================= */
+const RV = { items: [], i: 0, flipped: false, results: [] };
+async function vReview() {
+  stopPlay();
+  const d = await api("/api/me/reviews");
+  RV.items = d.items; RV.i = 0; RV.flipped = false; RV.results = []; RV.counts = d.counts;
+  return `<a class="back" href="#/parcours">${I.back} Mon parcours</a><div class="review-wrap" id="review">${reviewHTML()}</div>`;
+}
+function reviewHTML() {
+  if (!RV.items.length) return `<div class="card" style="text-align:center">${motif(64)}<h1 style="font-size:28px;margin:12px 0 6px">Rien à réviser pour l’instant</h1>
+    <p class="muted">Les mots de chaque leçon terminée arrivent ici, au bon moment pour ne pas les oublier.${RV.counts.total ? ` Tu as déjà ${RV.counts.total} mots en mémoire, dont ${RV.counts.mastered} maîtrisés.` : ""}</p>
+    <a class="btn btn-primary" style="margin-top:16px" href="#/parcours">Retour à mon parcours</a></div>`;
+  if (RV.i >= RV.items.length) {
+    const k = RV.results.filter((r) => r.knew).length;
+    return `<div class="card" style="text-align:center">${motif(64)}<p class="eyebrow" style="margin-top:12px">Révision terminée</p><h1 style="font-size:32px;margin:6px 0">${k} sur ${RV.results.length} retenus</h1>
+      <p class="muted">Les mots à revoir reviendront demain. Ceux que tu connais reviendront de plus en plus tard.</p>
+      <a class="btn btn-primary" style="margin-top:16px" href="#/parcours">Retour à mon parcours</a></div>`;
+  }
+  const it = RV.items[RV.i];
+  return `<div class="ptop"><span class="eyebrow">Révision · ${RV.i + 1}/${RV.items.length}</span><span class="muted" style="font-size:13px">Boîte ${it.box + 1} sur 6</span></div>
+    <div class="pbar"><i style="width:${Math.max(3, Math.round((RV.i / RV.items.length) * 100))}%"></i></div>
+    <button class="flash ${RV.flipped ? "flipped" : ""}" data-flip aria-live="polite">
+      <span class="flash-term">${esc(it.item)}</span>
+      ${RV.flipped ? `<span class="flash-mean">${esc(it.meaning || "")}</span>` : `<span class="muted" style="font-size:14px">Dis la traduction à voix haute, puis touche la carte</span>`}
+    </button>
+    <button class="btn btn-dark btn-sm" style="margin-top:12px" data-rvsay>${I.spk} Écouter</button>
+    ${RV.flipped ? `<div class="rv-actions"><button class="btn btn-ghost" data-rvgrade="0">À revoir</button><button class="btn btn-primary" data-rvgrade="1">Je savais</button></div>` : ""}`;
+}
+async function reviewGrade(knew) {
+  const it = RV.items[RV.i];
+  RV.results.push({ item: it.item, lesson_id: it.lesson_id, knew });
+  RV.i++; RV.flipped = false;
+  if (RV.i >= RV.items.length) { try { const r = await api("/api/me/reviews", { method: "POST", body: { results: RV.results } }); if (r.xp) toast(`+${r.xp} points`); } catch (e) { toast(e.message, true); } }
+  $("#review").innerHTML = reviewHTML();
+  if (RV.i < RV.items.length) playSentence({ text: RV.items[RV.i].item }, RV.items[RV.i].lang, 1);
+}
+
+/* ================= Petits éléments visuels ================= */
+function ring(value, max, size = 120, label = "") {
+  const r = (size - 14) / 2, c = 2 * Math.PI * r, p = Math.max(0, Math.min(1, max ? value / max : 0));
+  return `<svg class="ring" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}" role="img" aria-label="${esc(label)}">
+    <circle cx="${size / 2}" cy="${size / 2}" r="${r}" fill="none" stroke="var(--line)" stroke-width="10"/>
+    <circle cx="${size / 2}" cy="${size / 2}" r="${r}" fill="none" stroke="var(--green)" stroke-width="10" stroke-linecap="round" stroke-dasharray="${c}" stroke-dashoffset="${c * (1 - p)}" transform="rotate(-90 ${size / 2} ${size / 2})" class="ring-fg"/>
+  </svg>`;
+}
+const BADGE_ICON = { first: "1", ten: "10", thirty: "30", streak3: "3j", streak7: "7j", streak30: "30j", xp500: "500", xp2000: "2k", perfect: "100", placement: "A→C", cert: "★", review: "↺" };
+
 /* ================= Parcours ================= */
 async function vDash() {
   const d = await api("/api/me/dashboard"); await loadCatalog();
-  const n = d.next;
-  return `<p class="eyebrow">Mon parcours</p><h1 style="font-size:clamp(30px,4vw,44px);margin:8px 0 20px">${d.completed || d.minutes ? "Content de te revoir" : "Bienvenue"}, ${esc(S.me.name.split(" ")[0])}.</h1>
+  if (!S.me.onboarded && !d.completed && !d.xp) { location.hash = "#/bienvenue"; return ""; }
+  const n = d.next, first = esc(S.me.name.split(" ")[0]);
+  const goalPct = Math.min(100, Math.round((d.today / d.goal) * 100));
+  const enPlace = d.placement && d.placement.anglais;
+  const dayL = ["L", "M", "M", "J", "V", "S", "D"];
+  const maxXp = Math.max(d.goal, ...d.last7.map((x) => x.xp));
+  const earned = d.badges.filter((b) => b.earned).length;
+  return `<div class="dash-hello"><div><p class="eyebrow">Mon parcours</p><h1>${d.completed || d.xp ? "Content de te revoir" : "Bienvenue"}, ${first}.</h1></div>
+    <div class="hello-stats"><span class="pill streak ${d.streak ? "on" : ""}" title="Jours de suite">🔥 ${d.streak} jour${d.streak > 1 ? "s" : ""}</span><span class="pill xp" title="Points">⚡ ${d.xp.toLocaleString("fr-FR")} pts</span></div></div>
   <div class="dash"><div style="display:grid;gap:18px;min-width:0">
     ${n ? `<div class="card continue"><p class="eyebrow">Continuer · ${esc(n.course)}</p><h3>${esc(n.title)}</h3><p style="color:#A9BCB0">Leçon ${n.position} · ${n.duration_min} min${n.locked ? " · abonnement requis" : ""}</p><a class="btn btn-primary" style="margin-top:16px" href="#/lecon/${n.id}">${I.spk} ${n.locked ? "Voir la leçon" : "Reprendre l’écoute"}</a></div>`
       : `<div class="card continue"><p class="eyebrow">Commencer</p><h3>Choisis ton premier cours</h3><p style="color:#A9BCB0">La première leçon de chaque cours est gratuite.</p><a class="btn btn-primary" style="margin-top:16px" href="#/cours">Voir les cours</a></div>`}
+    <div class="dash-duo">
+      <div class="card goalcard"><div class="ringwrap">${ring(d.today, d.goal, 112, `Objectif du jour : ${d.today} sur ${d.goal} points`)}<div class="ringtxt"><b>${d.today}</b><small>/ ${d.goal} pts</small></div></div>
+        <div><h3 style="font-size:18px">Objectif du jour</h3><p class="muted" style="font-size:14px;margin-top:4px">${goalPct >= 100 ? "Objectif atteint, bravo !" : `Encore ${d.goal - d.today} points pour l’atteindre.`}</p>
+        <div class="seg" role="group" aria-label="Changer l’objectif">${[10, 20, 30, 50].map((g) => `<button data-setgoal="${g}" aria-pressed="${d.goal === g}">${g}</button>`).join("")}</div></div></div>
+      <a class="card revcard" href="#/revision" style="text-decoration:none;color:inherit"><p class="eyebrow">Révision intelligente</p>
+        <h3 style="font-size:28px;margin:6px 0 2px">${d.reviews.due} mot${d.reviews.due > 1 ? "s" : ""}</h3><p class="muted" style="font-size:14px">${d.reviews.due ? "à revoir aujourd’hui, pour ne pas les oublier." : d.reviews.total ? "Rien à revoir aujourd’hui. Reviens demain." : "Termine une leçon pour remplir ta mémoire."}</p>
+        <p style="margin-top:10px;font-size:13px" class="muted">${d.reviews.mastered} maîtrisé${d.reviews.mastered > 1 ? "s" : ""} sur ${d.reviews.total}</p>
+        ${d.reviews.due ? `<span class="btn btn-primary btn-sm" style="margin-top:12px">Réviser maintenant</span>` : ""}</a>
+    </div>
+    <div class="card"><div class="sec-h" style="margin:0"><h3 style="font-size:20px">Ma semaine</h3><span class="muted" style="font-size:14px">Record : ${d.best} jour${d.best > 1 ? "s" : ""} de suite</span></div>
+      <div class="week7" role="img" aria-label="Points des 7 derniers jours">${d.last7.map((x) => { const wd = (new Date(x.day + "T12:00:00Z").getUTCDay() + 6) % 7; return `<div class="wk ${x.xp >= d.goal ? "hit" : ""}"><span class="wkbar"><i style="height:${Math.max(x.xp ? 8 : 0, Math.round((x.xp / maxXp) * 100))}%"></i></span><b>${x.xp}</b><small>${dayL[wd]}</small></div>`; }).join("")}</div>
+      <div class="stats"><div class="stat"><b>${d.minutes}</b><small>min d’écoute</small></div><div class="stat"><b>${d.completed}</b><small>leçon${d.completed > 1 ? "s" : ""} validée${d.completed > 1 ? "s" : ""}</small></div><div class="stat"><b>${d.certificates.length}</b><small>certificat${d.certificates.length > 1 ? "s" : ""}</small></div></div></div>
     <div class="card"><h3 style="font-size:20px">Mes cours</h3>
       ${d.courses.length ? `<div class="plist" style="margin-top:14px">${d.courses.map((c) => { const p = c.total ? Math.round((c.done / c.total) * 100) : 0; const sub = d.subs.find((s) => s.course_id === c.id); return `<a class="row" href="#/cours/${esc(c.slug)}" style="text-decoration:none;color:inherit"><b>${esc(c.title)} ${sub ? `<span class="tag subbed" style="margin-left:6px">Abonné</span>` : `<span class="tag" style="margin-left:6px">Essai</span>`}</b><span class="muted" style="font-variant-numeric:tabular-nums">${p} %</span><div class="bar"><i style="width:${Math.max(p, 3)}%"></i></div></a>`; }).join("")}</div>` : `<p class="muted" style="margin-top:8px">Tu n’as pas encore commencé de cours.</p>`}
-    </div></div>
-    <div style="display:grid;gap:18px;align-content:start;min-width:0">
-      <div class="card"><h3 style="font-size:20px">Objectif de la semaine</h3><p class="muted" style="font-size:14px">5 jours d’écoute · chaque jour remplit un carré</p>
-        <div class="goal">${[0, 1, 2, 3, 4].map((i) => `<span class="${i < d.week ? "on" : ""}"></span>`).join("")}</div>
-        <div class="stats"><div class="stat"><b>${d.minutes}</b><small>min d’écoute</small></div><div class="stat"><b>${d.completed}</b><small>leçon${d.completed > 1 ? "s" : ""} validée${d.completed > 1 ? "s" : ""}</small></div><div class="stat"><b>${d.streak}</b><small>jour${d.streak > 1 ? "s" : ""} de suite</small></div></div></div>
-      <div class="card"><h3 style="font-size:20px">Mes abonnements</h3>
-        ${d.subs.length ? d.subs.map((s) => `<p style="margin-top:10px;display:flex;justify-content:space-between;gap:10px"><b>${esc(s.title)}</b><span class="muted">jusqu’au ${fmtD(s.end_at)}</span></p>`).join("") : `<p class="muted" style="margin-top:8px">Aucun abonnement. Les premières leçons restent gratuites.</p>`}
-        <a class="btn btn-ghost btn-sm" style="margin-top:14px" href="#/abonnements">Gérer mes abonnements</a></div>
-      <div class="card"><h3 style="font-size:20px">Besoin d’aide ?</h3><p class="muted" style="font-size:15px;margin-top:6px">L’équipe NEXOMIA répond sous deux jours ouvrables. Ton rôle : <b style="color:var(--ink)">${ROLE_FR[S.me.role]}</b>.</p></div>
-    </div></div>`;
+      <div class="placement-row">${enPlace ? `<span>Niveau d’anglais : <b>${esc(enPlace.level)} · ${esc(LEVEL_FR[enPlace.level] || "")}</b></span><a href="#/test-niveau/anglais">Refaire le test</a>` : `<span>Tu ne connais pas ton niveau d’anglais ?</span><a class="btn btn-ghost btn-sm" href="#/test-niveau/anglais">Passer le test de niveau</a>`}</div></div>
+    <div class="card"><div class="sec-h" style="margin:0"><h3 style="font-size:20px">Mes certificats</h3></div>
+      ${d.certificates.length ? `<div class="certlist">${d.certificates.map((c) => `<a href="#/certificat/${esc(c.code)}" class="certitem"><span class="cert-lv">${esc(c.module.split("·")[0].trim())}</span><span><b>${esc(c.course)} · ${esc(c.module)}</b><br><small class="muted">Délivré le ${fmtD(c.issued_at)} · ${esc(c.code)}</small></span></a>`).join("")}</div>`
+        : `<p class="muted" style="margin-top:8px;font-size:15px">Valide toutes les leçons d’un niveau (A1, A2, B1…) pour recevoir ton certificat NEXOMIA, téléchargeable en PDF et vérifiable en ligne.</p>`}</div>
+  </div>
+  <div style="display:grid;gap:18px;align-content:start;min-width:0">
+    <div class="card"><div class="sec-h" style="margin:0"><h3 style="font-size:20px">Badges</h3><span class="muted" style="font-size:14px">${earned}/${d.badges.length}</span></div>
+      <div class="badges">${d.badges.map((b) => `<div class="badge ${b.earned ? "on" : ""}" title="${esc(b.how)}"><span class="bico" aria-hidden="true">${BADGE_ICON[b.id] || "★"}</span><b>${esc(b.title)}</b><small>${esc(b.how)}</small></div>`).join("")}</div></div>
+    <div class="card"><h3 style="font-size:20px">Classement de la semaine</h3><p class="muted" style="font-size:13px;margin-top:4px">Points gagnés ces 7 derniers jours</p>
+      ${d.board.length ? `<ol class="board">${d.board.map((b) => `<li class="${b.me ? "me" : ""}"><span class="rk">${b.rank || "–"}</span><span class="nm">${esc(b.me ? b.name + " (toi)" : b.name)}</span><b>${b.xp}</b></li>`).join("")}</ol>` : `<p class="muted" style="margin-top:8px">Sois le premier à gagner des points cette semaine.</p>`}</div>
+    <div class="card"><h3 style="font-size:20px">Mes abonnements</h3>
+      ${d.subs.length ? d.subs.map((s) => `<p style="margin-top:10px;display:flex;justify-content:space-between;gap:10px"><b>${esc(s.title)}</b><span class="muted">jusqu’au ${fmtD(s.end_at)}</span></p>`).join("") : `<p class="muted" style="margin-top:8px">Aucun abonnement. Les premières leçons restent gratuites.</p>`}
+      <a class="btn btn-ghost btn-sm" style="margin-top:14px" href="#/abonnements">Gérer mes abonnements</a></div>
+    <div class="card"><h3 style="font-size:20px">Besoin d’aide ?</h3><p class="muted" style="font-size:15px;margin-top:6px">L’équipe NEXOMIA répond sous deux jours ouvrables. Ton rôle : <b style="color:var(--ink)">${ROLE_FR[S.me.role]}</b>.</p></div>
+  </div></div>`;
 }
 
 /* ================= Abonnements ================= */
@@ -592,7 +857,7 @@ function vLogin(query) {
     <p style="margin-top:16px;text-align:center">Pas encore de compte ? <a href="#/inscription?next=${encodeURIComponent(next)}">Créer un compte gratuit</a></p></div>`;
 }
 function vRegister(query) {
-  const next = query.get("next") || "#/cours";
+  const next = query.get("next") || "#/bienvenue";
   return `<div class="auth"><p class="eyebrow">Inscription gratuite</p><h1>Ton parcours commence</h1><p class="muted">Crée ton compte pour enregistrer ta progression. La première leçon de chaque cours est gratuite.</p>
     <form class="card" id="registerForm" data-next="${esc(next)}"><div class="field"><label for="r-name">Nom complet</label><input id="r-name" autocomplete="name" required minlength="2"></div>
     <div class="field"><label for="r-email">Adresse électronique</label><input id="r-email" type="email" autocomplete="email" required></div>
@@ -726,7 +991,7 @@ async function vAdmin() {
 document.addEventListener("click", async (e) => {
   const t = e.target.closest("button,[data-seek],a[data-close],a[data-subscribe],a[data-jump]"); if (!t) return;
   const ds = t.dataset;
-  if (ds.close !== undefined || ds.retry !== undefined) { if ($("#payModal") && payCtx) payCtx.dismissed = true; $("#layer").innerHTML = ""; if (ds.retrypay !== undefined) { pollRun++; payCtx = null; render(); return; } if (ds.retry !== undefined) { Q.state = { i: 0, correct: 0, picked: null }; $("#quiz").innerHTML = quizHTML(); P.mode = "phrase"; playFrom(0); } if (t.tagName !== "A") return; }
+  if (ds.close !== undefined || ds.retry !== undefined) { if ($("#payModal") && payCtx) payCtx.dismissed = true; $("#layer").innerHTML = ""; if (ds.retrypay !== undefined) { pollRun++; payCtx = null; render(); return; } if (ds.retry !== undefined) { Q.state = newQuizState(); $("#quiz").innerHTML = quizHTML(); P.mode = "phrase"; playFrom(0); } if (t.tagName !== "A") return; }
   if (ds.reload !== undefined) return render();
   if (ds.jump) { e.preventDefault(); const el = document.getElementById(ds.jump); if (el) el.scrollIntoView({ behavior: "smooth", block: "start" }); return; }
   if (ds.theme !== undefined) { const r = document.documentElement; const dark = r.dataset.theme ? r.dataset.theme === "dark" : matchMedia("(prefers-color-scheme: dark)").matches; r.dataset.theme = dark ? "light" : "dark"; store.set("theme", r.dataset.theme); return; }
@@ -744,8 +1009,35 @@ document.addEventListener("click", async (e) => {
   if (ds.toggle) { const k = ds.toggle; if (k === "mode") P.mode = P.mode === "phrase" ? "continu" : "phrase"; if (k === "repeat") P.repeat = !P.repeat; if (k === "loop") P.loop = !P.loop; if (k === "tr") { P.showTr = !P.showTr; $("#transcript").classList.toggle("hide-tr", !P.showTr); } return paintPlayer(); }
   if (ds.say) { stopPlay(); const lang = P.data ? P.data.course.lang : "fr-FR"; const s = P.data && P.data.lesson.sentences.find((x) => x.text === ds.say); return playSentence(s || { text: ds.say }, lang, P.rate); }
   if (ds.offline) return downloadOffline(ds.offline, t);
-  if (ds.pick !== undefined) { const q = P.data.lesson.questions[Q.state.i]; Q.state.picked = +ds.pick; if (+ds.pick === q.answer) Q.state.correct++; $("#quiz").innerHTML = quizHTML(); return; }
-  if (ds.qnext !== undefined) { if (Q.state.i + 1 < P.data.lesson.questions.length) { Q.state.i++; Q.state.picked = null; $("#quiz").innerHTML = quizHTML(); } else finishLesson(); return; }
+  if (ds.ptstart !== undefined) { PT.i = 0; PT.picked = null; $("#ptest").innerHTML = placementHTML(); return; }
+  if (ds.ptquit !== undefined) { if (PT.i > 0) return placementFinish(); location.hash = `#/cours/${PT.slug}`; return; }
+  if (ds.ptsay) return playSentence({ text: ds.ptsay }, PT.data.course.lang, 0.95);
+  if (ds.ptpick !== undefined) { if (PT.picked !== null) return; const q = PT.q[PT.i]; PT.picked = +ds.ptpick; if (PT.picked === q.answer) PT.byLevel[q.level] = (PT.byLevel[q.level] || 0) + 1; $("#ptest").innerHTML = placementHTML(); const nb = $("[data-ptnext]"); if (nb) nb.focus({ preventScroll: true }); return; }
+  if (ds.ptnext !== undefined) return placementNext();
+  if (ds.obmotive) { OB.motive = ds.obmotive; $("#onb").innerHTML = welcomeHTML(); return; }
+  if (ds.obgoal) { OB.goal = +ds.obgoal; $("#onb").innerHTML = welcomeHTML(); return; }
+  if (ds.obnext !== undefined) { OB.step++; $("#onb").innerHTML = welcomeHTML(); return; }
+  if (ds.obback !== undefined) { OB.step = Math.max(0, OB.step - 1); $("#onb").innerHTML = welcomeHTML(); return; }
+  if (ds.obfinish) return welcomeFinish(ds.obfinish);
+  if (ds.setgoal) { try { await api("/api/me/profile", { method: "PUT", body: { daily_goal: +ds.setgoal } }); S.me.daily_goal = +ds.setgoal; toast("Objectif du jour : " + ds.setgoal + " points"); render(); } catch (err) { toast(err.message, true); } return; }
+  if (ds.flip !== undefined) { RV.flipped = !RV.flipped; $("#review").innerHTML = reviewHTML(); return; }
+  if (ds.rvsay !== undefined) { const it = RV.items[RV.i]; return playSentence({ text: it.item }, it.lang, 1); }
+  if (ds.rvgrade !== undefined) return reviewGrade(ds.rvgrade === "1");
+  if (ds.print !== undefined) { window.print(); return; }
+  if (ds.sayslow) { stopPlay(); return playSentence({ text: ds.sayslow }, P.data.course.lang, 0.6); }
+  if (ds.pick !== undefined && t.closest("#quiz")) {
+    if (Q.state.result !== null) return;
+    const q = Q.items[Q.state.i]; Q.state.picked = +ds.pick;
+    return answerItem(+ds.pick === q.answer, q.type === "gap" ? `La phrase complète : « ${esc(q.say)} »` : md(q.explanation));
+  }
+  if (ds.tile !== undefined) { Q.state.chosen.push(+ds.tile); $("#quiz").innerHTML = quizHTML(); return; }
+  if (ds.untile !== undefined) { Q.state.chosen.splice(+ds.untile, 1); $("#quiz").innerHTML = quizHTML(); return; }
+  if (ds.check !== undefined && Q.state.result === null) {
+    const q = Q.items[Q.state.i];
+    if (q.type === "order") { const okk = norm(Q.state.chosen.map((k) => q.tiles[k].w).join(" ")) === norm(q.text); playSentence({ text: q.text }, P.data.course.lang, P.rate); return answerItem(okk, okk ? `« ${esc(q.text)} »` : `L’ordre correct : « ${esc(q.text)} »`); }
+    if (q.type === "dict") { const v = ($("#dictIn") || {}).value || ""; if (!v.trim()) { toast("Écris d’abord ce que tu entends."); return; } Q.state.typed = v; const sc = dictScore(v, q.text); return answerItem(sc >= 0.85, sc === 1 ? "Aucune faute." : sc >= 0.85 ? "Presque parfait : compare avec la phrase ci-dessous." : "Compare avec la bonne phrase, puis réécoute-la."); }
+  }
+  if (ds.qnext !== undefined) { if (Q.state.i + 1 < Q.items.length) { const m = Q.state.marks, c0 = Q.state.correct; Q.state = { ...newQuizState(), i: Q.state.i + 1, correct: c0, marks: m }; $("#quiz").innerHTML = quizHTML(); } else finishLesson(); return; }
   if (ds.finish !== undefined) return finishLesson();
   // Abonnements
   if (ds.cart) { const id = +ds.cart; S.cart = S.cart.includes(id) ? S.cart.filter((x) => x !== id) : S.cart.concat(id); store.set("cart", S.cart); return render(); }
@@ -788,8 +1080,8 @@ document.addEventListener("submit", async (e) => {
   const err = (m) => { const el = f.querySelector("#formErr") || $("#formErr"); if (el) el.textContent = m; else toast(m, true); };
   const btn = f.querySelector("button:not([type=button])"); if (btn) btn.disabled = true;
   try {
-    if (f.id === "loginForm") { const r = await api("/api/auth/login", { method: "POST", body: { email: $("#l-email").value, password: $("#l-pw").value } }); S.me = r.user; S.catalog = null; location.hash = f.dataset.next; }
-    else if (f.id === "registerForm") { const r = await api("/api/auth/register", { method: "POST", body: { name: $("#r-name").value, email: $("#r-email").value, phone: $("#r-phone").value, password: $("#r-pw").value } }); S.me = r.user; S.catalog = null; toast("Bienvenue dans NEXOMIA Academy"); location.hash = f.dataset.next; }
+    if (f.id === "loginForm") { const r = await api("/api/auth/login", { method: "POST", body: { email: $("#l-email").value, password: $("#l-pw").value } }); S.me = r.user; S.catalog = null; await sendPendingPlacement(); location.hash = f.dataset.next; }
+    else if (f.id === "registerForm") { const r = await api("/api/auth/register", { method: "POST", body: { name: $("#r-name").value, email: $("#r-email").value, phone: $("#r-phone").value, password: $("#r-pw").value } }); S.me = r.user; S.catalog = null; await sendPendingPlacement(); toast("Bienvenue dans NEXOMIA Academy"); location.hash = f.dataset.next || "#/bienvenue"; }
     else if (f.id === "recoverForm") { await api("/api/auth/admin-recover", { method: "POST", body: { email: $("#rc-email").value, code: $("#rc-code").value, password: $("#rc-pw").value } }); await boot(true); toast("Mot de passe enregistré. Pense à supprimer ADMIN_RECOVERY_CODE dans Railway."); location.hash = "#/admin"; }
     else if (f.id === "resetForm") { await api("/api/auth/reset", { method: "POST", body: { token: f.dataset.token, password: $("#p-pw").value } }); await boot(true); toast("Mot de passe enregistré"); location.hash = "#/parcours"; }
     else if (f.id === "newCourse") { const r = await api("/api/studio/courses", { method: "POST", body: { domain: $("#n-domain").value, template: $("#n-template").value, title: $("#n-title").value, level: $("#n-level").value, description: $("#n-desc").value, lang: $("#n-lang").value, lessonTitle: $("#n-ltitle").value, lines: $("#n-lines").value } }); studioMeta = null; toast("Brouillon créé"); location.hash = `#/studio/${r.id}`; }
@@ -805,6 +1097,11 @@ document.addEventListener("submit", async (e) => {
 window.addEventListener("hashchange", () => { $("#layer").innerHTML = ""; render(); });
 document.addEventListener("keydown", (e) => { if (e.key === "Escape") $("#layer").innerHTML = ""; });
 
+async function sendPendingPlacement() {
+  const pp = store.get("pendingPlacement", null); if (!pp || !S.me) return;
+  try { const r = await api("/api/me/placement", { method: "POST", body: pp }); S.me.placement = r.placement; } catch {}
+  store.set("pendingPlacement", null);
+}
 async function boot(silent) {
   try { const r = await api("/api/me"); S.me = r.user; S.payments = r.payments; if (r.methods) S.methods = r.methods; } catch { S.me = null; }
   if (!silent) render();
