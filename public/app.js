@@ -184,12 +184,12 @@ const routes = [
   [/^#\/parcours$/, vDash, "auth"], [/^#\/abonnements$/, vSubs], [/^#\/connexion$/, vLogin], [/^#\/inscription$/, vRegister],
   [/^#\/reinitialiser\/([\w-]+)$/, vReset], [/^#\/recuperation$/, vRecover], [/^#\/studio$/, vStudio, "creator"], [/^#\/studio\/(\d+)$/, vStudioCourse, "creator"],
   [/^#\/admin$/, vAdmin, "admin"],
-  [/^#\/test-niveau\/([\w-]+)$/, vPlacement], [/^#\/bienvenue$/, vWelcome, "auth"], [/^#\/certificat\/([\w-]+)$/, vCertificate], [/^#\/revision$/, vReview, "auth"],
+  [/^#\/test-niveau\/([\w-]+)$/, vPlacement], [/^#\/bienvenue$/, vWelcome, "auth"], [/^#\/certificat\/([\w-]+)$/, vCertificate], [/^#\/revision$/, vReview, "auth"], [/^#\/suggestions$/, vSuggestions],
 ];
 function parseHash() { const h = location.hash || "#/"; const [p, q] = h.split("?"); return { path: p, query: new URLSearchParams(q || "") }; }
 let renderId = 0;
 async function render() {
-  const my = ++renderId;
+  const my = ++renderId; S.after = null;
   const { path, query } = parseHash();
   if (!path.startsWith("#/lecon/") && P.data && !P.playing) P.data = null;
   paintNav(); paintPlayer();
@@ -203,6 +203,7 @@ async function render() {
     const html = await r[1](...path.match(r[0]).slice(1), query);
     if (my !== renderId) return;
     if (typeof html === "string") app.innerHTML = html + footer();
+    if (S.after) { const fn = S.after; S.after = null; try { fn(); } catch {} }
     paintPlayer();
     window.scrollTo(0, 0);
     // Accessibilité : annoncer la nouvelle page et placer le focus en haut du contenu.
@@ -214,7 +215,7 @@ async function render() {
     app.innerHTML = `<div class="empty"><p><b>${esc(e.message)}</b></p><p style="margin-top:12px"><button class="btn btn-ghost btn-sm" data-reload>Réessayer</button></p></div>`;
   }
 }
-const footer = () => `<footer><div class="wrap" style="padding:0"><span><b style="color:var(--ink)">NEXOMIA</b> · Former · Créer · Transformer · Lubumbashi, RDC</span><span>Paiements : M-Pesa · Airtel Money · Orange Money${S.methods.includes("card") ? " · Carte" : ""}</span></div></footer>`;
+const footer = () => `<footer><div class="wrap" style="padding:0"><span><b style="color:var(--ink)">NEXOMIA</b> · Former · Créer · Transformer · Lubumbashi, RDC</span><a href="#/suggestions">Boîte à suggestions</a><span>Paiements : M-Pesa · Airtel Money · Orange Money${S.methods.includes("card") ? " · Carte" : ""}</span></div></footer>`;
 
 async function loadCatalog(force) { if (!S.catalog || force) { const d = await api("/api/catalog"); S.catalog = d.courses; S.pricing = d.pricing; } return S.catalog; }
 
@@ -227,7 +228,7 @@ let heroLang = "en", heroRun = 0;
 function courseCard(c) {
   return `<a class="course" href="#/cours/${esc(c.slug)}" style="text-decoration:none;color:inherit">
     <div class="cover" style="background:${esc(c.color)}"><span class="code">${esc(c.code)}</span><span class="big">${esc(c.big)}</span></div>
-    <div class="meta"><span class="tag">${esc(c.domain)}</span></div>
+    <div class="meta"><span class="tag">${esc(c.domain)}</span>${c.reviews ? `<span class="card-rating">★ ${String(c.rating).replace(".", ",")} <small>(${c.reviews})</small></span>` : ""}</div>
     <h3>${esc(c.title)}</h3>
     <p class="muted" style="font-size:15px">${esc(c.description)}</p>
     <div class="meta" style="margin-top:auto"><span>${esc(c.level)}</span><span>· ${c.lessons} leçon${c.lessons > 1 ? "s" : ""} audio</span>${c.completed ? `<span>· ${c.completed}/${c.lessons} terminée${c.completed > 1 ? "s" : ""}</span>` : ""}</div>
@@ -341,6 +342,7 @@ async function vCourse(slug) {
   const { course: c, lessons, certificates = [], placement_test } = await api(`/api/courses/${encodeURIComponent(slug)}`);
   const certOf = (m) => certificates.find((x) => x.module === m);
   const myLevel = S.me && S.me.placement && S.me.placement[slug];
+  S.after = () => loadReviews(slug);
   const sub = c.subscribed_until;
   return `<a class="back" href="#/cours">${I.back} Tous les cours</a>
   <div class="course-hero" style="background:${esc(c.color)}"><div><p class="eyebrow" style="color:#fff;opacity:.8">${esc(c.domain)} · ${esc(c.code)}</p><h1 style="margin:8px 0">${esc(c.title)}</h1><p>${esc(c.level)} · ${lessons.length} leçon${lessons.length > 1 ? "s" : ""}</p></div><span class="big" aria-hidden="true">${esc(c.big)}</span></div>
@@ -351,7 +353,8 @@ async function vCourse(slug) {
       ${certOf(mod) ? `<a class="certitem" style="margin-bottom:10px" href="#/certificat/${esc(certOf(mod).code)}"><span class="cert-lv">${esc(mod.split("·")[0].trim())}</span><span><b>Niveau validé</b><br><small class="muted">Voir et télécharger mon certificat</small></span></a>` : ""}` : ""}
       <div class="llist">${ls.map((l) => `<a class="lrow ${l.completed ? "done" : ""} ${l.locked ? "locked" : ""}" href="#/lecon/${l.id}" style="text-decoration:none;color:inherit">
       <span class="num">${l.completed ? "✓" : l.position}</span><span style="min-width:0"><b>${esc(l.title)}</b><br><span class="st">${l.duration_min} min${l.position === 1 && !sub ? " · gratuite" : ""}${l.score !== null && l.score !== undefined ? ` · meilleur score ${l.score} %` : ""}</span></span>
-      <span class="st">${l.locked ? "Abonnement" : l.completed ? "Terminée" : "Écouter"}</span></a>`).join("")}</div></section>`).join("")}</div>
+      <span class="st">${l.locked ? "Abonnement" : l.completed ? "Terminée" : "Écouter"}</span></a>`).join("")}</div></section>`).join("")}
+      <section class="card reviews" id="reviews"></section></div>
     <div class="card" style="align-self:start"><p class="muted">${esc(c.description)}</p>
       ${sub ? `<p style="margin-top:14px"><span class="tag subbed">Abonné jusqu’au ${fmtD(sub)}</span></p><a class="btn btn-ghost btn-sm" style="margin-top:12px" data-subscribe="${c.id}" href="#/abonnements">Prolonger d’un mois</a>`
       : `<p class="amount" style="font-family:var(--f-display);font-size:40px;font-weight:800;margin-top:16px">${money(S.pricing.tiers[0])} <small class="muted" style="font-size:15px;font-weight:500">par mois</small></p><button class="btn btn-primary" style="width:100%;margin-top:12px" data-subscribe="${c.id}">S’abonner à ce cours</button><p class="muted" style="font-size:13px;margin-top:10px">La première leçon est gratuite. Prix réduit si tu prends plusieurs cours ensemble.</p>`}
@@ -382,6 +385,7 @@ async function vLesson(id) {
   const next = d.lessons.find((x) => x.position === l.position + 1);
   const voiceMissing = l.sentences.some((s) => !s.audio) && Speech.ok && Speech.voices.length && !Speech.pick(c.lang);
   Q.items = buildExercises(l, c.lang); Q.state = newQuizState();
+  CM.replyTo = null; S.after = () => loadComments(l.id);
   if (SP.lesson !== l.id) Object.assign(SP, { lesson: l.id, i: 0, result: null, good: new Set(), sent: false, listening: false });
   const audioCount = l.sentences.filter((s) => s.audio).length;
   return `<a class="back" href="#/cours/${esc(c.slug)}">${I.back} ${esc(c.title)}</a>
@@ -397,6 +401,7 @@ async function vLesson(id) {
     ${voiceMissing ? `<p class="note">Cet appareil n’a pas de voix pour cette langue. Les phrases sans enregistrement seront lues dès qu’une voix sera disponible, ou quand l’équipe aura ajouté l’audio.</p>` : ""}
     <div class="transcript ${P.showTr ? "" : "hide-tr"}" id="transcript">${l.sentences.map((s, i) => `<button class="sent" data-sent="${i}"><span class="who ${s.speaker === "B" ? "b" : ""}">${s.speaker === "N" ? "♪" : esc(s.speaker)}</span><span style="min-width:0"><span class="t">${esc(s.text)}</span>${s.translation ? `<span class="tr" style="display:block">${esc(s.translation)}</span>` : ""}</span><span class="mini" aria-hidden="true">${I.spk}</span></button>`).join("")}</div>
     ${/^fr/i.test(c.lang) ? "" : `<div class="card speak" id="speak">${speakHTML()}</div>`}
+    <div class="card comments" id="comments"><p class="muted">Chargement de la discussion…</p></div>
   </div>
   <aside class="side">
     ${l.vocab.length ? `<div class="card"><h3 style="font-size:18px">Vocabulaire</h3><div class="vocab" style="margin-top:12px">${l.vocab.map((v) => `<button data-say="${esc(v.term)}"><span><b>${esc(v.term)}</b><br><small>${esc(v.meaning)}</small></span>${I.spk}</button>`).join("")}</div></div>` : ""}
@@ -565,6 +570,92 @@ function startMic() {
   rec.onend = () => { SP.listening = false; paintSpeak(); };
   SP.listening = true; SP.result = null; paintSpeak();
   try { rec.start(); } catch { SP.listening = false; paintSpeak(); }
+}
+
+/* ================= Commentaires, avis et suggestions ================= */
+const fmtDT = (iso) => { if (!iso) return ""; const d = new Date(iso.replace(" ", "T") + (iso.length <= 19 ? "Z" : "")); const m = Math.round((Date.now() - d) / 60000);
+  return m < 1 ? "à l’instant" : m < 60 ? `il y a ${m} min` : m < 1440 ? `il y a ${Math.round(m / 60)} h` : m < 10080 ? `il y a ${Math.round(m / 1440)} j` : fmtD(iso); };
+const textBlock = (t) => esc(t).replace(/\n/g, "<br>");
+const CM = { lesson: null, list: [], mod: false, replyTo: null };
+async function loadComments(lessonId) {
+  const box = $("#comments"); if (!box) return;
+  try { const d = await api(`/api/lessons/${lessonId}/comments`); CM.lesson = lessonId; CM.list = d.comments; CM.mod = d.canModerate; paintComments(); }
+  catch { box.innerHTML = `<p class="muted">Impossible de charger la discussion pour l’instant.</p>`; }
+}
+function commentHTML(c, isReply) {
+  return `<div class="cm ${isReply ? "reply" : ""} ${c.hidden ? "is-hidden" : ""}" id="cm-${c.id}">
+    <span class="cm-av" aria-hidden="true">${esc(c.author[0] || "?")}</span>
+    <div class="cm-body"><p class="cm-head"><b>${esc(c.author)}</b>${c.staff ? `<span class="tag subbed">Équipe NEXOMIA</span>` : ""}<small class="muted">${fmtDT(c.created_at)}</small>${c.hidden ? `<span class="tag">Masqué</span>` : ""}</p>
+      <p class="cm-text" data-noi18n>${textBlock(c.body)}</p>
+      <p class="cm-actions">${S.me && !isReply ? `<button class="linkbtn" data-cmreply="${c.id}">Répondre</button>` : ""}${c.mine || CM.mod ? `<button class="linkbtn" data-cmdel="${c.id}">Supprimer</button>` : ""}${CM.mod && !c.mine ? `<button class="linkbtn" data-cmhide="${c.id}" data-val="${c.hidden ? 0 : 1}">${c.hidden ? "Afficher" : "Masquer"}</button>` : ""}</p>
+      ${CM.replyTo === c.id ? commentForm(c.id) : ""}
+    </div></div>`;
+}
+function commentForm(parent) {
+  return `<form class="cm-form" data-cmform="${parent || ""}"><label class="sr" for="cmIn-${parent || 0}">${parent ? "Ta réponse" : "Ton message"}</label>
+    <textarea id="cmIn-${parent || 0}" rows="${parent ? 2 : 3}" maxlength="1000" placeholder="${parent ? "Écris ta réponse…" : "Pose ta question ou partage ton avis sur cette leçon…"}" required></textarea>
+    <div class="cm-form-row"><small class="muted">Reste respectueux. Ne partage jamais ton numéro ni ton code Mobile Money.</small><button class="btn btn-primary btn-sm">${parent ? "Répondre" : "Publier"}</button></div></form>`;
+}
+function paintComments() {
+  const box = $("#comments"); if (!box) return;
+  const roots = CM.list.filter((c) => !c.parent_id), kids = (id) => CM.list.filter((c) => c.parent_id === id);
+  box.innerHTML = `<div class="sec-h" style="margin:0 0 12px"><div><p class="eyebrow">Discussion</p><h3 style="font-size:20px;margin-top:4px">Questions et commentaires</h3></div><span class="muted" style="font-size:14px">${CM.list.length} message${CM.list.length > 1 ? "s" : ""}</span></div>
+    ${S.me ? commentForm(null) : `<p class="note">Connecte-toi pour poser une question ou laisser un commentaire. <a href="#/connexion?next=${encodeURIComponent(location.hash)}">Se connecter</a></p>`}
+    <div class="cm-list">${roots.length ? roots.map((c) => commentHTML(c) + kids(c.id).map((k) => commentHTML(k, true)).join("")).join("") : `<p class="muted" style="margin-top:12px">Aucun message pour l’instant. Sois le premier à poser une question : l’équipe NEXOMIA répond.</p>`}</div>`;
+}
+
+const RVW = { data: null, pick: 0 };
+const stars = (n, size = 16) => `<span class="stars" style="--s:${size}px" aria-label="${n} sur 5">${[1, 2, 3, 4, 5].map((k) => `<i class="${k <= Math.round(n) ? "on" : ""}">★</i>`).join("")}</span>`;
+async function loadReviews(slug) {
+  const box = $("#reviews"); if (!box) return;
+  try { RVW.data = await api(`/api/courses/${encodeURIComponent(slug)}/reviews`); RVW.slug = slug; RVW.pick = RVW.data.mine ? RVW.data.mine.rating : 0; paintReviews(); } catch { box.innerHTML = ""; }
+}
+function paintReviews() {
+  const box = $("#reviews"), d = RVW.data; if (!box || !d) return;
+  const max = Math.max(1, ...d.dist);
+  box.innerHTML = `<div class="sec-h" style="margin:0 0 12px"><div><p class="eyebrow">Avis des apprenants</p><h2 style="font-size:24px;margin-top:4px">Ce qu’ils en pensent</h2></div></div>
+    ${d.count ? `<div class="rv-sum"><div class="rv-avg"><b>${String(d.average).replace(".", ",")}</b>${stars(d.average, 18)}<small class="muted">${d.count} avis</small></div>
+      <div class="rv-dist">${[5, 4, 3, 2, 1].map((k) => `<div><span>${k} ★</span><i><b style="width:${Math.round((d.dist[k - 1] / max) * 100)}%"></b></i><small>${d.dist[k - 1]}</small></div>`).join("")}</div></div>` : `<p class="muted">Pas encore d’avis sur ce cours.</p>`}
+    ${d.eligible ? `<form class="rv-form card" id="reviewForm"><b>${d.mine ? "Modifier mon avis" : "Donner mon avis"}</b>
+        <div class="starpick" role="radiogroup" aria-label="Note">${[1, 2, 3, 4, 5].map((k) => `<button type="button" role="radio" aria-checked="${RVW.pick === k}" aria-label="${k} étoile${k > 1 ? "s" : ""}" data-star="${k}" class="${k <= RVW.pick ? "on" : ""}">★</button>`).join("")}</div>
+        <label class="sr" for="rvIn">Ton avis</label><textarea id="rvIn" rows="3" maxlength="800" placeholder="Qu’as-tu aimé ? Qu’est-ce qui pourrait être mieux ?">${esc(d.mine ? d.mine.body : "")}</textarea>
+        <button class="btn btn-primary btn-sm">${d.mine ? "Mettre à jour" : "Publier mon avis"}</button><p class="err" id="formErr" role="alert"></p></form>`
+      : S.me ? `<p class="muted" style="font-size:14px;margin-top:10px">Termine une première leçon de ce cours pour donner ton avis.</p>` : ""}
+    <div class="rv-list">${d.reviews.map((x) => `<div class="rv-item"><p class="cm-head"><b>${esc(x.author)}</b>${stars(x.rating, 14)}<small class="muted">${fmtD(x.updated_at)}</small></p>${x.body ? `<p data-noi18n>${textBlock(x.body)}</p>` : ""}</div>`).join("")}</div>`;
+}
+
+const SUG_LABEL = { cours: "Nouveau cours", amelioration: "Amélioration", probleme: "Problème", autre: "Autre" };
+const SUG_STATUS = { new: "Reçue", review: "À l’étude", done: "Réalisée", declined: "Pas pour l’instant" };
+async function vSuggestions() {
+  const mine = S.me ? (await api("/api/me/suggestions")).suggestions : [];
+  return `<div class="sugg-wrap"><p class="eyebrow">Ton avis compte</p><h1 style="font-size:clamp(28px,4.4vw,40px);margin:8px 0">Boîte à suggestions</h1>
+    <p class="muted" style="max-width:56ch">Un cours que tu aimerais suivre, une idée pour améliorer l’application, un problème rencontré ? L’équipe NEXOMIA lit chaque message et te répond ici.</p>
+    ${S.me ? `<form class="card" id="suggForm" style="margin-top:18px">
+      <div class="choice-row" role="radiogroup" aria-label="Sujet">${Object.entries(SUG_LABEL).map(([k, l], i) => `<label class="chip-radio"><input type="radio" name="scat" value="${k}" ${i === 0 ? "checked" : ""}><span>${l}</span></label>`).join("")}</div>
+      <div class="field" style="margin-top:12px"><label for="sgIn">Ta suggestion</label><textarea id="sgIn" rows="5" maxlength="2000" required placeholder="Par exemple : un cours d’anglais pour les chauffeurs et transporteurs…"></textarea></div>
+      <button class="btn btn-primary">Envoyer ma suggestion</button><p class="err" id="formErr" role="alert"></p></form>`
+      : `<div class="card" style="margin-top:18px"><p>Connecte-toi pour envoyer une suggestion et suivre la réponse de l’équipe.</p><a class="btn btn-primary btn-sm" style="margin-top:12px" href="#/connexion?next=${encodeURIComponent("#/suggestions")}">Se connecter</a></div>`}
+    ${mine.length ? `<h2 style="font-size:22px;margin:26px 0 10px">Mes suggestions</h2><div class="sugg-list">${mine.map((x) => `<div class="card sugg"><p class="cm-head"><span class="tag">${SUG_LABEL[x.category] || x.category}</span><span class="status ${x.status === "done" ? "st-pub" : x.status === "review" ? "st-review" : "st-draft"}">${SUG_STATUS[x.status]}</span><small class="muted">${fmtD(x.created_at)}</small></p>
+      <p data-noi18n>${textBlock(x.body)}</p>${x.reply ? `<div class="sugg-reply"><b>Réponse de l’équipe NEXOMIA</b><p data-noi18n>${textBlock(x.reply)}</p></div>` : ""}</div>`).join("")}</div>` : ""}
+  </div>`;
+}
+
+async function adminFeedback() {
+  const [{ suggestions }, fb] = [await api("/api/admin/suggestions"), await api("/api/admin/feedback")];
+  return `<h2 style="font-size:22px;margin:4px 0 10px">Suggestions (${suggestions.filter((s) => s.status === "new").length} nouvelle${suggestions.filter((s) => s.status === "new").length > 1 ? "s" : ""})</h2>
+    <div class="sugg-list">${suggestions.map((x) => `<form class="card sugg" data-suggadmin="${x.id}"><p class="cm-head"><b>${esc(x.name || "Compte supprimé")}</b><small class="muted">${esc(x.email || "")} ${esc(x.phone || "")}</small><span class="tag">${SUG_LABEL[x.category] || x.category}</span><small class="muted">${fmtD(x.created_at)}</small></p>
+        <p>${textBlock(x.body)}</p>
+        <div class="two" style="margin-top:10px"><div class="field"><label>Statut</label><select name="status">${Object.entries(SUG_STATUS).map(([k, l]) => `<option value="${k}" ${k === x.status ? "selected" : ""}>${l}</option>`).join("")}</select></div>
+        <div class="field"><label>Réponse visible par l’apprenant</label><textarea name="reply" rows="2">${esc(x.reply)}</textarea></div></div>
+        <button class="btn btn-ghost btn-sm">Enregistrer</button></form>`).join("") || `<p class="muted">Aucune suggestion pour l’instant.</p>`}</div>
+    <h2 style="font-size:22px;margin:26px 0 10px">Derniers commentaires des leçons</h2>
+    <div class="table-wrap"><table class="t"><thead><tr><th>Date</th><th>Apprenant</th><th>Leçon</th><th>Message</th><th></th></tr></thead><tbody>
+      ${fb.comments.map((c) => `<tr><td>${fmtD(c.created_at)}</td><td>${esc(c.name)}<br><small class="muted">${esc(c.email)}</small></td><td><a href="#/lecon/${c.lesson_id}">${esc(c.course)} · ${esc(c.lesson)}</a></td><td style="max-width:420px">${c.parent_id ? "<small class=muted>Réponse · </small>" : ""}${textBlock(c.body)}</td><td><button class="btn btn-ghost btn-sm" data-cmhide="${c.id}" data-val="${c.hidden ? 0 : 1}" data-admin="1">${c.hidden ? "Afficher" : "Masquer"}</button></td></tr>`).join("") || `<tr><td colspan="5" class="muted">Aucun commentaire.</td></tr>`}
+    </tbody></table></div>
+    <h2 style="font-size:22px;margin:26px 0 10px">Avis sur les cours</h2>
+    <div class="table-wrap"><table class="t"><thead><tr><th>Date</th><th>Apprenant</th><th>Cours</th><th>Note</th><th>Avis</th><th></th></tr></thead><tbody>
+      ${fb.reviews.map((x) => `<tr><td>${fmtD(x.updated_at)}</td><td>${esc(x.name)}</td><td>${esc(x.course)}</td><td>${stars(x.rating, 13)}</td><td style="max-width:420px">${textBlock(x.body)}</td><td><button class="btn btn-ghost btn-sm" data-rvhide="${x.id}" data-val="${x.hidden ? 0 : 1}">${x.hidden ? "Afficher" : "Masquer"}</button></td></tr>`).join("") || `<tr><td colspan="6" class="muted">Aucun avis.</td></tr>`}
+    </tbody></table></div>`;
 }
 
 /* ================= Test de niveau ================= */
@@ -775,7 +866,7 @@ async function vDash() {
     <div class="card"><h3 style="font-size:20px">Mes abonnements</h3>
       ${d.subs.length ? d.subs.map((s) => `<p style="margin-top:10px;display:flex;justify-content:space-between;gap:10px"><b>${esc(s.title)}</b><span class="muted">jusqu’au ${fmtD(s.end_at)}</span></p>`).join("") : `<p class="muted" style="margin-top:8px">Aucun abonnement. Les premières leçons restent gratuites.</p>`}
       <a class="btn btn-ghost btn-sm" style="margin-top:14px" href="#/abonnements">Gérer mes abonnements</a></div>
-    <div class="card"><h3 style="font-size:20px">Besoin d’aide ?</h3><p class="muted" style="font-size:15px;margin-top:6px">L’équipe NEXOMIA répond sous deux jours ouvrables. Ton rôle : <b style="color:var(--ink)">${ROLE_FR[S.me.role]}</b>.</p></div>
+    <div class="card"><h3 style="font-size:20px">Besoin d’aide ?</h3><p class="muted" style="font-size:15px;margin-top:6px">L’équipe NEXOMIA répond sous deux jours ouvrables. Ton rôle : <b style="color:var(--ink)">${ROLE_FR[S.me.role]}</b>.</p><a class="btn btn-ghost btn-sm" style="margin-top:12px" href="#/suggestions">Envoyer une suggestion</a></div>
   </div></div>`;
 }
 
@@ -1045,7 +1136,7 @@ async function vStudioCourse(id) {
 let adminTab = "overview";
 async function vAdmin() {
   const head = `<p class="eyebrow">Administration</p><h1 style="font-size:clamp(30px,4vw,44px);margin:8px 0 6px">Pilotage NEXOMIA</h1>
-    <div class="tabs" role="group">${[["overview", "Vue d’ensemble"], ["users", "Utilisateurs"], ["orders", "Paiements"], ["voices", "Voix"]].map(([k, l]) => `<button data-atab="${k}" aria-pressed="${adminTab === k}">${l}</button>`).join("")}</div>`;
+    <div class="tabs" role="group">${[["overview", "Vue d’ensemble"], ["users", "Utilisateurs"], ["orders", "Paiements"], ["feedback", "Retours"], ["voices", "Voix"]].map(([k, l]) => `<button data-atab="${k}" aria-pressed="${adminTab === k}">${l}</button>`).join("")}</div>`;
   if (adminTab === "users") {
     const [{ users, roles }, cat] = [await api(`/api/admin/users?q=${encodeURIComponent(S.adminQ || "")}`), await loadCatalog()];
     return head + `<form id="userSearch" style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap"><input id="u-q" class="chip" style="flex:1;min-width:200px;font-weight:400;padding:10px 14px" placeholder="Rechercher un nom ou une adresse" value="${esc(S.adminQ || "")}"><button class="btn btn-ghost btn-sm">Rechercher</button></form>
@@ -1055,6 +1146,7 @@ async function vAdmin() {
       <td style="display:flex;gap:6px;flex-wrap:wrap"><button class="btn btn-ghost btn-sm" data-resetlink="${u.id}">Lien mot de passe</button><select data-grant="${u.id}" aria-label="Offrir un mois de cours"><option value="">Bourse : offrir 1 mois…</option>${cat.map((c) => `<option value="${c.id}">${esc(c.title)}</option>`).join("")}</select><button class="btn btn-ghost btn-sm" data-suspend="${u.id}" data-val="${u.suspended ? 0 : 1}">${u.suspended ? "Réactiver" : "Suspendre"}</button></td></tr>`).join("")}
     </tbody></table></div><div id="resetOut"></div>`;
   }
+  if (adminTab === "feedback") return head + await adminFeedback();
   if (adminTab === "voices") {
     const t = await api("/api/admin/tts"), j = t.job;
     if (j.running) setTimeout(() => { if (adminTab === "voices" && location.hash === "#/admin") render(); }, 4000);
@@ -1131,6 +1223,11 @@ document.addEventListener("click", async (e) => {
   if (ds.rvsay !== undefined) { const it = RV.items[RV.i]; return playSentence({ text: it.item }, it.lang, 1); }
   if (ds.rvgrade !== undefined) return reviewGrade(ds.rvgrade === "1");
   if (ds.print !== undefined) { window.print(); return; }
+  if (ds.cmreply) { CM.replyTo = CM.replyTo === +ds.cmreply ? null : +ds.cmreply; paintComments(); const ta = $(`#cmIn-${ds.cmreply}`); if (ta) ta.focus(); return; }
+  if (ds.cmdel) { if (!confirm("Supprimer ce message ?")) return; try { await api(`/api/comments/${ds.cmdel}`, { method: "DELETE" }); CM.list = CM.list.filter((c) => c.id !== +ds.cmdel && c.parent_id !== +ds.cmdel); paintComments(); toast("Message supprimé"); } catch (err) { toast(err.message, true); } return; }
+  if (ds.cmhide) { try { await api(`/api/comments/${ds.cmhide}/hidden`, { method: "PUT", body: { hidden: ds.val === "1" } }); toast(ds.val === "1" ? "Message masqué" : "Message affiché"); if (ds.admin) render(); else loadComments(CM.lesson); } catch (err) { toast(err.message, true); } return; }
+  if (ds.rvhide) { try { await api(`/api/admin/reviews/${ds.rvhide}/hidden`, { method: "PUT", body: { hidden: ds.val === "1" } }); toast(ds.val === "1" ? "Avis masqué" : "Avis affiché"); render(); } catch (err) { toast(err.message, true); } return; }
+  if (ds.star) { RVW.pick = +ds.star; document.querySelectorAll("[data-star]").forEach((b) => { b.classList.toggle("on", +b.dataset.star <= RVW.pick); b.setAttribute("aria-checked", +b.dataset.star === RVW.pick); }); return; }
   if (ds.mic !== undefined) return startMic();
   if (ds.spsay !== undefined) { const s0 = speakSentences()[SP.i]; stopPlay(); return playSentence(s0, P.data.course.lang, P.rate); }
   if (ds.spstep) { const n0 = speakSentences().length; SP.i = Math.max(0, Math.min(n0 - 1, SP.i + +ds.spstep)); SP.result = null; if (SP.rec && SP.listening) SP.rec.abort(); paintSpeak(); return; }
@@ -1200,6 +1297,13 @@ document.addEventListener("submit", async (e) => {
     else if (f.id === "courseMeta") { await api(`/api/studio/courses/${f.dataset.course}`, { method: "PUT", body: { title: $("#m-title").value, domain: $("#m-domain").value, level: $("#m-level").value, lang: $("#m-lang").value, description: $("#m-desc").value } }); toast("Informations enregistrées"); render(); }
     else if (f.id === "addLesson") { await api(`/api/studio/courses/${f.dataset.course}/lessons`, { method: "POST", body: { title: $("#a-title").value, goal: $("#a-goal").value, lines: $("#a-lines").value, module: $("#a-module").value, notes: $("#a-notes").value } }); toast("Leçon ajoutée"); render(); }
     else if (f.classList.contains("lessonForm")) { const fd = new FormData(f); await api(`/api/studio/lessons/${f.dataset.lesson}`, { method: "PUT", body: Object.fromEntries(fd) }); toast("Leçon enregistrée"); render(); }
+    else if (f.dataset.cmform !== undefined) {
+      const ta = f.querySelector("textarea"); const r = await api(`/api/lessons/${CM.lesson}/comments`, { method: "POST", body: { body: ta.value, parent_id: f.dataset.cmform ? +f.dataset.cmform : null } });
+      CM.list.push(r.comment); CM.replyTo = null; paintComments(); toast("Message publié");
+    }
+    else if (f.id === "reviewForm") { if (!RVW.pick) { err("Choisis une note de 1 à 5 étoiles."); if (btn) btn.disabled = false; return; } await api(`/api/courses/${encodeURIComponent(RVW.slug)}/reviews`, { method: "POST", body: { rating: RVW.pick, body: $("#rvIn").value } }); toast("Merci pour ton avis !"); S.catalog = null; await loadReviews(RVW.slug); return; }
+    else if (f.id === "suggForm") { const cat = (f.querySelector("input[name=scat]:checked") || {}).value; await api("/api/suggestions", { method: "POST", body: { category: cat, body: $("#sgIn").value, page: document.referrer ? "" : "" } }); toast("Merci ! Ta suggestion a bien été envoyée."); render(); return; }
+    else if (f.dataset.suggadmin) { const fd = new FormData(f); await api(`/api/admin/suggestions/${f.dataset.suggadmin}`, { method: "PUT", body: { status: fd.get("status"), reply: fd.get("reply") } }); toast("Suggestion mise à jour"); }
     else if (f.id === "userSearch") { S.adminQ = $("#u-q").value; render(); }
     else if (f.id === "pricingForm") { const tiers = [...f.querySelectorAll("[data-tier]")].map((i) => Number(i.value)); const r = await api("/api/admin/pricing", { method: "PUT", body: { tiers, extra: Number($("#tier-extra").value) } }); S.pricing = r.pricing; toast("Tarif enregistré"); }
   } catch (x) { err(x.message); }

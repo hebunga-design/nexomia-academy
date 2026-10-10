@@ -85,7 +85,9 @@ r.get("/api/catalog", (ctx) => {
   const courses = all(`SELECT c.id, c.slug, c.domain, c.title, c.code, c.big, c.level, c.lang, c.description, c.color,
       (SELECT COUNT(*) FROM lessons l WHERE l.course_id = c.id) AS lessons,
       (SELECT COALESCE(SUM(duration_min),0) FROM lessons l WHERE l.course_id = c.id) AS minutes,
-      (SELECT id FROM lessons l WHERE l.course_id = c.id ORDER BY position LIMIT 1) AS first_lesson
+      (SELECT id FROM lessons l WHERE l.course_id = c.id ORDER BY position LIMIT 1) AS first_lesson,
+      (SELECT ROUND(AVG(rating), 1) FROM course_reviews r WHERE r.course_id = c.id AND r.hidden = 0) AS rating,
+      (SELECT COUNT(*) FROM course_reviews r WHERE r.course_id = c.id AND r.hidden = 0) AS reviews
     FROM courses c WHERE c.status = 'published' ORDER BY c.published_at, c.id`)
     .map((c) => ({ ...c, subscribed_until: subs.get(c.id) || null, completed: doneMap.get(c.id) || 0 }));
   ok(ctx, { courses, pricing: pricing() });
@@ -200,6 +202,122 @@ r.post("/api/me/speak", async (ctx) => {
   const good = Math.max(0, Math.min(20, Math.round(Number(b.good) || 0)));
   const xp = good >= 3 ? L.award(ctx.user.id, "speak", `${l.id}:${L.today()}`, 5 + good) : 0;
   ok(ctx, { xp });
+});
+
+// ---------- Commentaires des leçons et avis des cours ----------
+const shortName = (n) => { const p = String(n).trim().split(/\s+/); return p[0] + (p[1] ? " " + p[1][0].toUpperCase() + "." : ""); };
+const cleanBody = (t, max) => String(t || "").replace(/\r/g, "").replace(/\n{3,}/g, "\n\n").trim().slice(0, max);
+function publicComment(c, me) {
+  return { id: c.id, parent_id: c.parent_id, body: c.body, created_at: c.created_at, hidden: !!c.hidden,
+    author: shortName(c.name), staff: A.can({ role: c.role }, "coach"), mine: !!me && me.id === c.user_id };
+}
+r.get("/api/lessons/:id/comments", (ctx) => {
+  const l = one("SELECT * FROM lessons WHERE id = ?", Number(ctx.params.id));
+  if (!l) throw new HttpError(404, "Leçon introuvable.");
+  const mod = A.can(ctx.user, "coach");
+  const rows = all(`SELECT c.*, u.name, u.role FROM comments c JOIN users u ON u.id = c.user_id WHERE c.lesson_id = ? ${mod ? "" : "AND c.hidden = 0"} ORDER BY c.created_at`, l.id);
+  ok(ctx, { comments: rows.map((c) => publicComment(c, ctx.user)), canModerate: mod });
+});
+r.post("/api/lessons/:id/comments", async (ctx) => {
+  A.requireUser(ctx);
+  A.throttle("comment:" + ctx.user.id, 10, 10 * 60e3);
+  const l = one("SELECT * FROM lessons WHERE id = ?", Number(ctx.params.id));
+  if (!l || !hasAccess(ctx.user, l)) throw new HttpError(403, "Leçon non accessible.");
+  const b = await readJson(ctx.req);
+  const body = cleanBody(b.body, 1000);
+  if (body.length < 2) throw new HttpError(400, "Écris ton message avant de l’envoyer.");
+  let parent = null;
+  if (b.parent_id) { const p = one("SELECT id, parent_id FROM comments WHERE id = ? AND lesson_id = ?", Number(b.parent_id), l.id); if (!p) throw new HttpError(404, "Message introuvable."); parent = p.parent_id || p.id; }
+  const id = Number(run("INSERT INTO comments(lesson_id, user_id, parent_id, body) VALUES(?, ?, ?, ?)", l.id, ctx.user.id, parent, body).lastInsertRowid);
+  const c = one("SELECT c.*, u.name, u.role FROM comments c JOIN users u ON u.id = c.user_id WHERE c.id = ?", id);
+  ok(ctx, { comment: publicComment(c, ctx.user) }, 201);
+});
+r.del("/api/comments/:id", (ctx) => {
+  A.requireUser(ctx);
+  const c = one("SELECT * FROM comments WHERE id = ?", Number(ctx.params.id));
+  if (!c) throw new HttpError(404, "Message introuvable.");
+  if (c.user_id !== ctx.user.id && !A.can(ctx.user, "coach")) throw new HttpError(403, "Tu ne peux supprimer que tes propres messages.");
+  run("DELETE FROM comments WHERE id = ?", c.id);
+  if (c.user_id !== ctx.user.id) audit(ctx.user.id, "comment.delete", { id: c.id });
+  ok(ctx, { ok: true });
+});
+r.put("/api/comments/:id/hidden", async (ctx) => {
+  A.requireRole("coach")(ctx);
+  const b = await readJson(ctx.req);
+  run("UPDATE comments SET hidden = ? WHERE id = ?", b.hidden ? 1 : 0, Number(ctx.params.id));
+  audit(ctx.user.id, b.hidden ? "comment.hide" : "comment.show", { id: Number(ctx.params.id) });
+  ok(ctx, { ok: true });
+});
+
+r.get("/api/courses/:slug/reviews", (ctx) => {
+  const c = one("SELECT id FROM courses WHERE slug = ?", ctx.params.slug);
+  if (!c) throw new HttpError(404, "Cours introuvable.");
+  const rows = all("SELECT cr.*, u.name FROM course_reviews cr JOIN users u ON u.id = cr.user_id WHERE cr.course_id = ? AND cr.hidden = 0 ORDER BY cr.updated_at DESC LIMIT 50", c.id);
+  const stats = one("SELECT COUNT(*) AS n, AVG(rating) AS avg FROM course_reviews WHERE course_id = ? AND hidden = 0", c.id);
+  const dist = [1, 2, 3, 4, 5].map((k) => one("SELECT COUNT(*) AS n FROM course_reviews WHERE course_id = ? AND hidden = 0 AND rating = ?", c.id, k).n);
+  const mine = ctx.user ? one("SELECT rating, body FROM course_reviews WHERE course_id = ? AND user_id = ?", c.id, ctx.user.id) : null;
+  const eligible = !!ctx.user && !!one("SELECT 1 FROM progress p JOIN lessons l ON l.id = p.lesson_id WHERE p.user_id = ? AND l.course_id = ? AND p.completed_at IS NOT NULL", ctx.user.id, c.id);
+  ok(ctx, { reviews: rows.map((x) => ({ id: x.id, rating: x.rating, body: x.body, author: shortName(x.name), updated_at: x.updated_at, mine: !!ctx.user && x.user_id === ctx.user.id })),
+    count: stats.n, average: stats.avg ? Math.round(stats.avg * 10) / 10 : null, dist, mine, eligible });
+});
+r.post("/api/courses/:slug/reviews", async (ctx) => {
+  A.requireUser(ctx);
+  A.throttle("review:" + ctx.user.id, 10, 60 * 60e3);
+  const c = one("SELECT id FROM courses WHERE slug = ?", ctx.params.slug);
+  if (!c) throw new HttpError(404, "Cours introuvable.");
+  if (!one("SELECT 1 FROM progress p JOIN lessons l ON l.id = p.lesson_id WHERE p.user_id = ? AND l.course_id = ? AND p.completed_at IS NOT NULL", ctx.user.id, c.id))
+    throw new HttpError(403, "Termine au moins une leçon de ce cours pour donner ton avis.");
+  const b = await readJson(ctx.req);
+  const rating = Math.round(Number(b.rating));
+  if (!(rating >= 1 && rating <= 5)) throw new HttpError(400, "Choisis une note de 1 à 5 étoiles.");
+  run(`INSERT INTO course_reviews(course_id, user_id, rating, body) VALUES(?, ?, ?, ?)
+       ON CONFLICT(course_id, user_id) DO UPDATE SET rating = excluded.rating, body = excluded.body, updated_at = datetime('now')`, c.id, ctx.user.id, rating, cleanBody(b.body, 800));
+  ok(ctx, { ok: true });
+});
+r.get("/api/admin/feedback", (ctx) => {
+  A.requireRole("coach")(ctx);
+  const comments = all(`SELECT c.id, c.body, c.hidden, c.created_at, c.parent_id, u.name, u.email, l.id AS lesson_id, l.title AS lesson, co.title AS course
+    FROM comments c JOIN users u ON u.id = c.user_id JOIN lessons l ON l.id = c.lesson_id JOIN courses co ON co.id = l.course_id ORDER BY c.created_at DESC LIMIT 100`);
+  const reviews = all(`SELECT cr.id, cr.rating, cr.body, cr.hidden, cr.updated_at, u.name, u.email, co.title AS course
+    FROM course_reviews cr JOIN users u ON u.id = cr.user_id JOIN courses co ON co.id = cr.course_id ORDER BY cr.updated_at DESC LIMIT 100`);
+  ok(ctx, { comments, reviews });
+});
+// Boîte à suggestions : privée entre l'apprenant et l'équipe.
+const SUG_CATS = ["cours", "amelioration", "probleme", "autre"];
+r.get("/api/me/suggestions", (ctx) => {
+  A.requireUser(ctx);
+  ok(ctx, { suggestions: all("SELECT id, category, body, status, reply, created_at, updated_at FROM suggestions WHERE user_id = ? ORDER BY id DESC LIMIT 30", ctx.user.id) });
+});
+r.post("/api/suggestions", async (ctx) => {
+  A.requireUser(ctx);
+  A.throttle("sugg:" + ctx.user.id, 6, 60 * 60e3);
+  const b = await readJson(ctx.req);
+  const body = cleanBody(b.body, 2000);
+  if (body.length < 5) throw new HttpError(400, "Décris ta suggestion en quelques mots.");
+  const cat = SUG_CATS.includes(b.category) ? b.category : "autre";
+  run("INSERT INTO suggestions(user_id, category, body, page) VALUES(?, ?, ?, ?)", ctx.user.id, cat, body, String(b.page || "").slice(0, 120));
+  ok(ctx, { ok: true }, 201);
+});
+r.get("/api/admin/suggestions", (ctx) => {
+  A.requireRole("coach")(ctx);
+  ok(ctx, { suggestions: all(`SELECT s.*, u.name, u.email, u.phone FROM suggestions s LEFT JOIN users u ON u.id = s.user_id ORDER BY CASE s.status WHEN 'new' THEN 0 WHEN 'review' THEN 1 ELSE 2 END, s.id DESC LIMIT 200`) });
+});
+r.put("/api/admin/suggestions/:id", async (ctx) => {
+  A.requireRole("coach")(ctx);
+  const b = await readJson(ctx.req);
+  const s0 = one("SELECT * FROM suggestions WHERE id = ?", Number(ctx.params.id));
+  if (!s0) throw new HttpError(404, "Suggestion introuvable.");
+  const status = ["new", "review", "done", "declined"].includes(b.status) ? b.status : s0.status;
+  const reply = b.reply !== undefined ? cleanBody(b.reply, 1500) : s0.reply;
+  run("UPDATE suggestions SET status = ?, reply = ?, updated_at = datetime('now') WHERE id = ?", status, reply, s0.id);
+  ok(ctx, { ok: true });
+});
+r.put("/api/admin/reviews/:id/hidden", async (ctx) => {
+  A.requireRole("coach")(ctx);
+  const b = await readJson(ctx.req);
+  run("UPDATE course_reviews SET hidden = ? WHERE id = ?", b.hidden ? 1 : 0, Number(ctx.params.id));
+  audit(ctx.user.id, b.hidden ? "review.hide" : "review.show", { id: Number(ctx.params.id) });
+  ok(ctx, { ok: true });
 });
 
 // ---------- Test de niveau ----------
