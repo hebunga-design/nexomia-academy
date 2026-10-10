@@ -9,6 +9,7 @@ const B = require("./billing");
 const C = require("./content");
 const { pricing, totalFor, validatePricing } = require("./pricing");
 const L = require("./learning");
+const Mail = require("./mail");
 const PLACEMENT = { anglais: require("./courses/anglais/placement") };
 
 const r = createRouter();
@@ -35,6 +36,7 @@ r.post("/api/auth/register", async (ctx) => {
   const b = await readJson(ctx.req);
   const id = A.register(b);
   A.createSession(ctx.res, id, ctx.secure);
+  Mail.sendWelcome(one("SELECT id, name, email FROM users WHERE id = ?", id)).catch(() => {});
   ok(ctx, { user: one("SELECT id, name, email, phone, role FROM users WHERE id = ?", id) }, 201);
 });
 r.post("/api/auth/login", async (ctx) => {
@@ -45,6 +47,33 @@ r.post("/api/auth/login", async (ctx) => {
   ok(ctx, { user: one("SELECT id, name, email, phone, role FROM users WHERE id = ?", id) });
 });
 r.post("/api/auth/logout", (ctx) => { A.destroySession(ctx.req, ctx.res, ctx.secure); ok(ctx, { ok: true }); });
+// Mot de passe oublié : la réponse est toujours la même, pour ne pas révéler quelles adresses existent.
+r.post("/api/auth/forgot", async (ctx) => {
+  A.throttle("forgot:" + ctx.ip, 5, 60 * 60e3);
+  const b = await readJson(ctx.req);
+  const email = String(b.email || "").trim().toLowerCase();
+  if (!Mail.provider()) return ok(ctx, { ok: true, mail: false });
+  A.throttle("forgot:" + email, 3, 60 * 60e3);
+  const u = one("SELECT id, name, email, suspended FROM users WHERE email = ?", email);
+  if (u && !u.suspended) { const token = A.createResetToken(u.id); Mail.sendReset(u, token).catch(() => {}); audit(u.id, "reset_requested"); }
+  ok(ctx, { ok: true, mail: true });
+});
+function unsubPage(ctx, okk) {
+  const html = `<!doctype html><html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>NEXOMIA Academy</title></head>
+  <body style="margin:0;font-family:Segoe UI,Helvetica,Arial,sans-serif;background:#F3F6F2;color:#16232E;display:grid;place-items:center;min-height:100vh;padding:20px">
+  <div style="max-width:440px;background:#fff;border:1px solid #D3DDD2;border-radius:18px;padding:28px;text-align:center">
+  <h1 style="font-size:22px;margin:0 0 10px">${okk ? "C’est noté" : "Lien invalide"}</h1>
+  <p style="line-height:1.6;color:#56646E">${okk ? "Tu ne recevras plus le bilan hebdomadaire de NEXOMIA Academy. Tu peux le réactiver à tout moment depuis « Mon parcours »." : "Ce lien de désinscription n’est pas valable. Tu peux gérer tes e-mails depuis « Mon parcours »."}</p>
+  <a href="/#/parcours" style="display:inline-block;margin-top:12px;background:#2F7D32;color:#fff;padding:12px 18px;border-radius:12px;text-decoration:none;font-weight:700">Mon parcours</a></div></body></html>`;
+  ctx.res.writeHead(okk ? 200 : 400, { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store" }); ctx.res.end(html);
+}
+function doUnsub(ctx) {
+  const id = Number(ctx.params.id), okk = Mail.checkUnsub(id, ctx.params.token);
+  if (okk) { run("UPDATE users SET email_progress = 0 WHERE id = ?", id); audit(id, "mail.unsubscribe"); }
+  return okk;
+}
+r.get("/desabonnement/:id/:token", (ctx) => unsubPage(ctx, doUnsub(ctx)));
+r.post("/desabonnement/:id/:token", (ctx) => { const okk = doUnsub(ctx); ok(ctx, { ok: okk }, okk ? 200 : 400); });
 r.post("/api/auth/reset", async (ctx) => {
   A.throttle("reset:" + ctx.ip, 10);
   const b = await readJson(ctx.req);
@@ -145,6 +174,7 @@ r.post("/api/progress", async (ctx) => {
     xp = L.lessonXp(ctx.user.id, l.id, correct, passed);
     L.addToReview(ctx.user.id, l.id, all("SELECT term FROM vocab WHERE lesson_id = ?", l.id).map((v) => v.term));
     if (passed) cert = L.maybeCertificate(ctx.user, l);
+    if (cert && ctx.user.email_progress) Mail.sendCertificate(ctx.user, cert, one("SELECT title FROM courses WHERE id = ?", l.course_id).title).catch(() => {});
   }
   ok(ctx, { passed, threshold: 80, xp, certificate: cert, today: L.xpOn(ctx.user.id, L.today()), goal: ctx.user.daily_goal });
 });
@@ -189,8 +219,9 @@ r.put("/api/me/profile", async (ctx) => {
   const goal = [10, 20, 30, 50].includes(Number(b.daily_goal)) ? Number(b.daily_goal) : ctx.user.daily_goal;
   const motive = ["travail", "etudes", "voyage", "entreprise", "culture"].includes(b.motive) ? b.motive : ctx.user.motive;
   const lang = ["fr", "en"].includes(b.ui_lang) ? b.ui_lang : ctx.user.ui_lang;
-  run("UPDATE users SET daily_goal = ?, motive = ?, ui_lang = ?, onboarded = CASE WHEN ? THEN 1 ELSE onboarded END WHERE id = ?", goal, motive, lang, b.onboarded ? 1 : 0, ctx.user.id);
-  ok(ctx, { ok: true, daily_goal: goal, motive, ui_lang: lang });
+  const ep = typeof b.email_progress === "boolean" ? (b.email_progress ? 1 : 0) : (ctx.user.email_progress ? 1 : 0);
+  run("UPDATE users SET daily_goal = ?, motive = ?, ui_lang = ?, email_progress = ?, onboarded = CASE WHEN ? THEN 1 ELSE onboarded END WHERE id = ?", goal, motive, lang, ep, b.onboarded ? 1 : 0, ctx.user.id);
+  ok(ctx, { ok: true, daily_goal: goal, motive, ui_lang: lang, email_progress: !!ep });
 });
 
 // Prononciation : quelques points par leçon et par jour quand l'apprenant s'entraîne au micro.
@@ -539,6 +570,25 @@ r.post("/api/studio/courses/:id/decision", async (ctx) => {
 
 // ---------- Administration ----------
 const admin = A.requireRole("admin");
+// E-mails
+r.get("/api/admin/mail", (ctx) => { admin(ctx); ok(ctx, Mail.status()); });
+r.post("/api/admin/mail/test", async (ctx) => {
+  admin(ctx);
+  const b = await readJson(ctx.req);
+  const me = one("SELECT id, name, email FROM users WHERE id = ?", ctx.user.id);
+  const fn = { weekly: Mail.sendWeekly, welcome: Mail.sendWelcome }[b.kind] || Mail.sendWeekly;
+  const r0 = await fn(me);
+  if (!r0.sent) throw new HttpError(400, r0.reason === "not_configured" ? "Aucun service d’envoi n’est configuré." : `Envoi refusé par le service (${r0.reason}). ${r0.detail || ""}`);
+  ok(ctx, { ok: true, to: me.email });
+});
+r.post("/api/admin/mail/weekly", async (ctx) => {
+  admin(ctx);
+  if (!Mail.provider()) throw new HttpError(400, "Aucun service d’envoi n’est configuré.");
+  Mail.runWeekly(true).catch(() => {});
+  audit(ctx.user.id, "mail.weekly.manual");
+  ok(ctx, Mail.status());
+});
+
 // Voix professionnelles
 const TTS = require("./tts");
 r.get("/api/admin/tts", (ctx) => { admin(ctx); ok(ctx, TTS.status()); });

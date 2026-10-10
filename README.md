@@ -58,6 +58,8 @@ ADMIN_EMAILS=vous@exemple.com node server/index.js
 | `PUBLIC_URL` | Adresse publique du site (pour les retours de paiement) |
 | `PAYMENTS_TEST_MODE` | `true` par défaut : paiements simulés tant que FlexPay n’est pas configuré. `false` pour fermer les paiements |
 | `PAWAPAY_TOKEN` | Jeton API pawaPay (prestataire prioritaire dès qu’il est renseigné ; Mobile Money uniquement) |
+| `BREVO_API_KEY` | Clé API Brevo pour les e-mails (bienvenue, certificat, mot de passe oublié, bilan du lundi). Alternative : `RESEND_API_KEY` |
+| `MAIL_FROM` | Expéditeur, par défaut `NEXOMIA Academy <academy@nexomia360.com>` (domaine à valider chez le service d’envoi) |
 | `ELEVENLABS_API_KEY` | Clé ElevenLabs pour générer les voix professionnelles (Admin → Voix). Facultatif : `ELEVENLABS_VOICE_A`, `_B`, `_N` pour choisir les voix |
 | `GOOGLE_TTS_API_KEY` | Alternative : clé Google Cloud Text-to-Speech (voix Neural2) |
 | `PAWAPAY_SANDBOX` | `true` pour utiliser l’environnement de test pawaPay avec un jeton de test |

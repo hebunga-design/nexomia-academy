@@ -9,6 +9,7 @@ const { currentUser } = require("./auth");
 const { seedIfEmpty, syncBundledContent } = require("./seed");
 const { startReconciliation, providerName } = require("./billing");
 const routes = require("./routes");
+const Mail = require("./mail");
 
 const PORT = Number(process.env.PORT) || 3000;
 const PUBLIC = path.join(__dirname, "..", "public");
@@ -92,6 +93,7 @@ const seeded = seedIfEmpty();
 const synced = syncBundledContent();
 if (synced) console.log(`Cours d'anglais mis à jour : ${synced} leçons`);
 startReconciliation();
+Mail.startScheduler();
 server.listen(PORT, () => {
-  console.log(`NEXOMIA Academy en ligne sur le port ${PORT} · paiements : ${providerName()}${seeded ? " · catalogue de départ créé" : ""}`);
+  console.log(`NEXOMIA Academy en ligne sur le port ${PORT} · paiements : ${providerName()} · e-mails : ${Mail.provider() || "non configurés"}${seeded ? " · catalogue de départ créé" : ""}`);
 });

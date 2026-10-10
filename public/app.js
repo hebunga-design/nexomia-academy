@@ -184,7 +184,7 @@ const routes = [
   [/^#\/parcours$/, vDash, "auth"], [/^#\/abonnements$/, vSubs], [/^#\/connexion$/, vLogin], [/^#\/inscription$/, vRegister],
   [/^#\/reinitialiser\/([\w-]+)$/, vReset], [/^#\/recuperation$/, vRecover], [/^#\/studio$/, vStudio, "creator"], [/^#\/studio\/(\d+)$/, vStudioCourse, "creator"],
   [/^#\/admin$/, vAdmin, "admin"],
-  [/^#\/test-niveau\/([\w-]+)$/, vPlacement], [/^#\/bienvenue$/, vWelcome, "auth"], [/^#\/certificat\/([\w-]+)$/, vCertificate], [/^#\/revision$/, vReview, "auth"], [/^#\/suggestions$/, vSuggestions],
+  [/^#\/test-niveau\/([\w-]+)$/, vPlacement], [/^#\/bienvenue$/, vWelcome, "auth"], [/^#\/certificat\/([\w-]+)$/, vCertificate], [/^#\/revision$/, vReview, "auth"], [/^#\/suggestions$/, vSuggestions], [/^#\/mot-de-passe-oublie$/, vForgot],
 ];
 function parseHash() { const h = location.hash || "#/"; const [p, q] = h.split("?"); return { path: p, query: new URLSearchParams(q || "") }; }
 let renderId = 0;
@@ -867,6 +867,9 @@ async function vDash() {
       ${d.subs.length ? d.subs.map((s) => `<p style="margin-top:10px;display:flex;justify-content:space-between;gap:10px"><b>${esc(s.title)}</b><span class="muted">jusqu’au ${fmtD(s.end_at)}</span></p>`).join("") : `<p class="muted" style="margin-top:8px">Aucun abonnement. Les premières leçons restent gratuites.</p>`}
       <a class="btn btn-ghost btn-sm" style="margin-top:14px" href="#/abonnements">Gérer mes abonnements</a></div>
     <div class="card"><h3 style="font-size:20px">Besoin d’aide ?</h3><p class="muted" style="font-size:15px;margin-top:6px">L’équipe NEXOMIA répond sous deux jours ouvrables. Ton rôle : <b style="color:var(--ink)">${ROLE_FR[S.me.role]}</b>.</p><a class="btn btn-ghost btn-sm" style="margin-top:12px" href="#/suggestions">Envoyer une suggestion</a></div>
+    <div class="card"><h3 style="font-size:20px">Mes e-mails</h3>
+      <label class="switch"><input type="checkbox" data-emailprog ${S.me.email_progress ? "checked" : ""}><span class="sw" aria-hidden="true"></span><span>Recevoir mon bilan de progression chaque lundi</span></label>
+      <p class="muted" style="font-size:13px;margin-top:8px">Envoyé à ${esc(S.me.email)}. Les e-mails importants (certificat, mot de passe) restent envoyés.</p></div>
   </div></div>`;
 }
 
@@ -1026,13 +1029,20 @@ async function pollOrder(ref) {
 }
 
 /* ================= Connexion ================= */
+function vForgot() {
+  return `<div class="auth"><p class="eyebrow">Mot de passe oublié</p><h1>Pas de panique</h1><p class="muted">Indique l’adresse de ton compte : nous t’envoyons un lien pour choisir un nouveau mot de passe.</p>
+    <form class="card" id="forgotForm"><div class="field"><label for="f-email">Adresse électronique</label><input id="f-email" type="email" autocomplete="email" required></div>
+    <button class="btn btn-primary" style="width:100%">Recevoir le lien</button><p class="err" id="formErr" role="alert"></p></form>
+    <div id="forgotDone"></div>
+    <p style="margin-top:16px;text-align:center"><a href="#/connexion">Retour à la connexion</a></p></div>`;
+}
 function vLogin(query) {
   const next = query.get("next") || "#/parcours";
   return `<div class="auth"><p class="eyebrow">Connexion</p><h1>Content de te revoir</h1>
     <form class="card" id="loginForm" data-next="${esc(next)}"><div class="field"><label for="l-email">Adresse électronique</label><input id="l-email" type="email" autocomplete="email" required></div>
     <div class="field"><label for="l-pw">Mot de passe</label><input id="l-pw" type="password" autocomplete="current-password" required minlength="8"></div>
     <button class="btn btn-primary" style="width:100%">Se connecter</button><p class="err" id="formErr" role="alert"></p>
-    <p class="muted" style="font-size:14px;margin-top:6px">Mot de passe oublié ? Écris à l’équipe NEXOMIA : elle t’enverra un lien de réinitialisation. <a href="#/recuperation">Administrateur ?</a></p></form>
+    <p style="font-size:14px;margin-top:8px;display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap"><a href="#/mot-de-passe-oublie">Mot de passe oublié ?</a><a class="muted" href="#/recuperation">Administrateur ?</a></p></form>
     <p style="margin-top:16px;text-align:center">Pas encore de compte ? <a href="#/inscription?next=${encodeURIComponent(next)}">Créer un compte gratuit</a></p></div>`;
 }
 function vRegister(query) {
@@ -1136,7 +1146,7 @@ async function vStudioCourse(id) {
 let adminTab = "overview";
 async function vAdmin() {
   const head = `<p class="eyebrow">Administration</p><h1 style="font-size:clamp(30px,4vw,44px);margin:8px 0 6px">Pilotage NEXOMIA</h1>
-    <div class="tabs" role="group">${[["overview", "Vue d’ensemble"], ["users", "Utilisateurs"], ["orders", "Paiements"], ["feedback", "Retours"], ["voices", "Voix"]].map(([k, l]) => `<button data-atab="${k}" aria-pressed="${adminTab === k}">${l}</button>`).join("")}</div>`;
+    <div class="tabs" role="group">${[["overview", "Vue d’ensemble"], ["users", "Utilisateurs"], ["orders", "Paiements"], ["feedback", "Retours"], ["mail", "E-mails"], ["voices", "Voix"]].map(([k, l]) => `<button data-atab="${k}" aria-pressed="${adminTab === k}">${l}</button>`).join("")}</div>`;
   if (adminTab === "users") {
     const [{ users, roles }, cat] = [await api(`/api/admin/users?q=${encodeURIComponent(S.adminQ || "")}`), await loadCatalog()];
     return head + `<form id="userSearch" style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap"><input id="u-q" class="chip" style="flex:1;min-width:200px;font-weight:400;padding:10px 14px" placeholder="Rechercher un nom ou une adresse" value="${esc(S.adminQ || "")}"><button class="btn btn-ghost btn-sm">Rechercher</button></form>
@@ -1147,6 +1157,17 @@ async function vAdmin() {
     </tbody></table></div><div id="resetOut"></div>`;
   }
   if (adminTab === "feedback") return head + await adminFeedback();
+  if (adminTab === "mail") {
+    const m = await api("/api/admin/mail"), j = m.job;
+    if (j.running) setTimeout(() => { if (adminTab === "mail" && location.hash === "#/admin") render(); }, 4000);
+    return head + `<div class="card"><h3 style="font-size:20px">E-mails aux apprenants</h3>
+      <p class="muted" style="margin-top:6px;max-width:70ch">Bienvenue à l’inscription, félicitations à chaque certificat, lien « mot de passe oublié », et bilan de progression chaque lundi à 8 h (heure de Lubumbashi) pour les apprenants actifs. Chaque bilan contient un lien de désinscription.</p>
+      <p style="margin-top:12px">Service : <b>${m.provider === "brevo" ? "Brevo" : m.provider === "resend" ? "Resend" : "aucun"}</b> · Expéditeur : <b>${esc(m.from.name)} &lt;${esc(m.from.email)}&gt;</b></p>
+      ${!m.provider ? `<div class="note" style="margin-top:12px">Pour activer les e-mails, ajoute dans Railway <b>BREVO_API_KEY</b> (ou <b>RESEND_API_KEY</b>) et, si besoin, <b>MAIL_FROM</b>, puis clique sur Deploy. Le domaine nexomia360.com doit être validé chez le service d’envoi.</div>` : ""}
+      <div class="kpis" style="margin-top:14px"><div class="kpi"><b>${m.recipients}</b><small>apprenants recevront le prochain bilan</small></div><div class="kpi"><b>${m.lastWeek || "—"}</b><small>dernière semaine envoyée</small></div>${j.total ? `<div class="kpi"><b>${j.sent} / ${j.total}</b><small>${j.running ? "envoi en cours…" : "dernier envoi"}${j.failed ? ` · ${j.failed} échec(s)` : ""}</small></div>` : ""}</div>
+      ${m.provider ? `<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:14px"><button class="btn btn-ghost btn-sm" data-mailtest="weekly">M’envoyer un exemple de bilan</button><button class="btn btn-ghost btn-sm" data-mailtest="welcome">M’envoyer l’e-mail de bienvenue</button><button class="btn btn-primary btn-sm" data-mailweekly ${j.running ? "disabled" : ""}>Envoyer le bilan à tous maintenant</button></div>` : ""}
+    </div>`;
+  }
   if (adminTab === "voices") {
     const t = await api("/api/admin/tts"), j = t.job;
     if (j.running) setTimeout(() => { if (adminTab === "voices" && location.hash === "#/admin") render(); }, 4000);
@@ -1263,6 +1284,8 @@ document.addEventListener("click", async (e) => {
   if (ds.dellesson) { if (!confirm("Supprimer cette leçon et ses audios ?")) return; try { await api(`/api/studio/lessons/${ds.dellesson}`, { method: "DELETE" }); toast("Leçon supprimée"); render(); } catch (err) { toast(err.message, true); } return; }
   if (ds.delaudio) { try { await api(`/api/studio/sentences/${ds.delaudio}/audio`, { method: "DELETE" }); toast("Audio retiré"); render(); } catch (err) { toast(err.message, true); } return; }
   // Admin
+  if (ds.mailtest) { t.disabled = true; try { const r = await api("/api/admin/mail/test", { method: "POST", body: { kind: ds.mailtest } }); toast("E-mail envoyé à " + r.to); } catch (err) { toast(err.message, true); } t.disabled = false; return; }
+  if (ds.mailweekly !== undefined) { if (!confirm("Envoyer le bilan de la semaine à tous les apprenants actifs maintenant ?")) return; try { await api("/api/admin/mail/weekly", { method: "POST" }); toast("Envoi du bilan lancé"); render(); } catch (err) { toast(err.message, true); } return; }
   if (ds.tts) { t.disabled = true; try { await api("/api/admin/tts", { method: "POST", body: { courseId: +ds.tts } }); toast("Génération des voix lancée"); render(); } catch (err) { toast(err.message, true); t.disabled = false; } return; }
   if (ds.ttsstop !== undefined) { await api("/api/admin/tts", { method: "POST", body: { stop: true } }).catch(() => {}); toast("Arrêt demandé"); render(); return; }
   if (ds.atab) { adminTab = ds.atab; return render(); }
@@ -1280,6 +1303,7 @@ document.addEventListener("change", async (e) => {
     toast("Envoi de l’audio…");
     try { await api(`/api/studio/sentences/${t.dataset.upload}/audio`, { method: "PUT", raw: f, type: f.type || "audio/mpeg" }); toast("Audio enregistré"); render(); } catch (err) { toast(err.message, true); }
   }
+  if (t.dataset.emailprog !== undefined) { try { await api("/api/me/profile", { method: "PUT", body: { email_progress: t.checked } }); S.me.email_progress = t.checked; toast(t.checked ? "Tu recevras ton bilan chaque lundi" : "Bilan hebdomadaire désactivé"); } catch (err) { t.checked = !t.checked; toast(err.message, true); } return; }
   if (t.dataset.role) { try { await api(`/api/admin/users/${t.dataset.role}`, { method: "PUT", body: { role: t.value } }); toast("Rôle mis à jour"); } catch (err) { toast(err.message, true); render(); } }
   if (t.dataset.grant && t.value) { try { await api(`/api/admin/users/${t.dataset.grant}/grant`, { method: "POST", body: { courseId: +t.value } }); toast("Bourse accordée : un mois offert"); render(); } catch (err) { toast(err.message, true); } }
 });
@@ -1302,6 +1326,13 @@ document.addEventListener("submit", async (e) => {
       CM.list.push(r.comment); CM.replyTo = null; paintComments(); toast("Message publié");
     }
     else if (f.id === "reviewForm") { if (!RVW.pick) { err("Choisis une note de 1 à 5 étoiles."); if (btn) btn.disabled = false; return; } await api(`/api/courses/${encodeURIComponent(RVW.slug)}/reviews`, { method: "POST", body: { rating: RVW.pick, body: $("#rvIn").value } }); toast("Merci pour ton avis !"); S.catalog = null; await loadReviews(RVW.slug); return; }
+    else if (f.id === "forgotForm") {
+      const r = await api("/api/auth/forgot", { method: "POST", body: { email: $("#f-email").value } });
+      f.remove();
+      $("#forgotDone").innerHTML = r.mail ? `<div class="card" role="status"><b>Vérifie ta boîte e-mail</b><p class="muted" style="margin-top:6px">Si un compte existe avec cette adresse, tu vas recevoir un lien dans quelques minutes. Pense à regarder dans les courriers indésirables (spam).</p></div>`
+        : `<div class="card" role="status"><b>Contacte l’équipe NEXOMIA</b><p class="muted" style="margin-top:6px">L’envoi automatique n’est pas encore actif. Écris à l’équipe NEXOMIA : elle t’enverra un lien de réinitialisation.</p></div>`;
+      return;
+    }
     else if (f.id === "suggForm") { const cat = (f.querySelector("input[name=scat]:checked") || {}).value; await api("/api/suggestions", { method: "POST", body: { category: cat, body: $("#sgIn").value, page: document.referrer ? "" : "" } }); toast("Merci ! Ta suggestion a bien été envoyée."); render(); return; }
     else if (f.dataset.suggadmin) { const fd = new FormData(f); await api(`/api/admin/suggestions/${f.dataset.suggadmin}`, { method: "PUT", body: { status: fd.get("status"), reply: fd.get("reply") } }); toast("Suggestion mise à jour"); }
     else if (f.id === "userSearch") { S.adminQ = $("#u-q").value; render(); }

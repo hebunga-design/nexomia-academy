@@ -162,6 +162,8 @@ ensureColumn("users", "motive", "TEXT NOT NULL DEFAULT ''");
 ensureColumn("users", "placement", "TEXT NOT NULL DEFAULT '{}'");
 ensureColumn("users", "onboarded", "INTEGER NOT NULL DEFAULT 0");
 ensureColumn("users", "ui_lang", "TEXT NOT NULL DEFAULT 'fr'");
+ensureColumn("users", "email_progress", "INTEGER NOT NULL DEFAULT 1");
+ensureColumn("users", "last_weekly", "TEXT");
 db.exec(`
 CREATE TABLE IF NOT EXISTS xp_events (
   id INTEGER PRIMARY KEY,

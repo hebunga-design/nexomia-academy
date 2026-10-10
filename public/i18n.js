@@ -89,6 +89,15 @@ const D = {
   "Connecte-toi pour envoyer une suggestion et suivre la réponse de l’équipe.": "Log in to send a suggestion and follow the team’s reply.",
   "Écris ton message avant de l’envoyer.": "Write your message before sending it.", "Décris ta suggestion en quelques mots.": "Describe your suggestion in a few words.",
   "Termine au moins une leçon de ce cours pour donner ton avis.": "Finish at least one lesson of this course to leave a review.",
+
+  "Mot de passe oublié ?": "Forgot your password?", "Mot de passe oublié": "Forgotten password", "Pas de panique": "Don’t worry",
+  "Indique l’adresse de ton compte : nous t’envoyons un lien pour choisir un nouveau mot de passe.": "Enter your account email: we’ll send you a link to choose a new password.",
+  "Recevoir le lien": "Send me the link", "Retour à la connexion": "Back to log in", "Vérifie ta boîte e-mail": "Check your inbox",
+  "Si un compte existe avec cette adresse, tu vas recevoir un lien dans quelques minutes. Pense à regarder dans les courriers indésirables (spam).": "If an account exists with this email, you’ll receive a link within a few minutes. Remember to check your spam folder.",
+  "Contacte l’équipe NEXOMIA": "Contact the NEXOMIA team", "L’envoi automatique n’est pas encore actif. Écris à l’équipe NEXOMIA : elle t’enverra un lien de réinitialisation.": "Automatic emails aren’t active yet. Write to the NEXOMIA team: they’ll send you a reset link.",
+  "Mes e-mails": "My emails", "Recevoir mon bilan de progression chaque lundi": "Receive my progress report every Monday",
+  "Les e-mails importants (certificat, mot de passe) restent envoyés.": "Important emails (certificate, password) are still sent.",
+  "Tu recevras ton bilan chaque lundi": "You’ll receive your report every Monday", "Bilan hebdomadaire désactivé": "Weekly report turned off",
   // Domaines et niveaux
   "Tous": "All", "Langues": "Languages", "Numérique": "Digital", "Design et création": "Design and creation", "Entrepreneuriat": "Entrepreneurship",
   "Initiation": "Introduction", "Tous niveaux · A1 à C2": "All levels · A1 to C2", "Débutant · A1": "Beginner · A1",
@@ -224,6 +233,7 @@ const R = [
   [/^Suggestions \((\d+) nouvelles?\)$/, (m) => `Suggestions (${m[1]} new)`],
   [/^(\d+) sur 5$/, (m) => `${m[1]} out of 5`],
   [/^(\d) étoiles?$/, (m) => `${m[1]} star${m[1] > 1 ? "s" : ""}`],
+  [/^Envoyé à (\S+)\. Les e-mails importants \(certificat, mot de passe\) restent envoyés\.$/, (m) => `Sent to ${m[1]}. Important emails (certificate, password) are still sent.`],
   [/^(\d+) cours publiés$/, (m) => `${m[1]} published courses`],
   [/^· (\d+) leçons? audio$/, (m) => `· ${m[1]} audio lesson${m[1] > 1 ? "s" : ""}`],
   [/^(\d+) \/ (\d+) leçons?$|^(\d+)\/(\d+) leçons?$/, (m) => `${m[1] || m[3]}/${m[2] || m[4]} lessons`],
