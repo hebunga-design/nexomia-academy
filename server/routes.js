@@ -191,6 +191,17 @@ r.put("/api/me/profile", async (ctx) => {
   ok(ctx, { ok: true, daily_goal: goal, motive, ui_lang: lang });
 });
 
+// Prononciation : quelques points par leçon et par jour quand l'apprenant s'entraîne au micro.
+r.post("/api/me/speak", async (ctx) => {
+  A.requireUser(ctx);
+  const b = await readJson(ctx.req);
+  const l = one("SELECT * FROM lessons WHERE id = ?", Number(b.lessonId));
+  if (!l || !hasAccess(ctx.user, l)) throw new HttpError(403, "Leçon non accessible.");
+  const good = Math.max(0, Math.min(20, Math.round(Number(b.good) || 0)));
+  const xp = good >= 3 ? L.award(ctx.user.id, "speak", `${l.id}:${L.today()}`, 5 + good) : 0;
+  ok(ctx, { xp });
+});
+
 // ---------- Test de niveau ----------
 r.get("/api/placement/:slug", (ctx) => {
   const qs = PLACEMENT[ctx.params.slug];

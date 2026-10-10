@@ -344,6 +344,7 @@ async function vLesson(id) {
   const next = d.lessons.find((x) => x.position === l.position + 1);
   const voiceMissing = l.sentences.some((s) => !s.audio) && Speech.ok && Speech.voices.length && !Speech.pick(c.lang);
   Q.items = buildExercises(l, c.lang); Q.state = newQuizState();
+  if (SP.lesson !== l.id) Object.assign(SP, { lesson: l.id, i: 0, result: null, good: new Set(), sent: false, listening: false });
   const audioCount = l.sentences.filter((s) => s.audio).length;
   return `<a class="back" href="#/cours/${esc(c.slug)}">${I.back} ${esc(c.title)}</a>
   <div class="lesson"><div style="min-width:0">
@@ -357,6 +358,7 @@ async function vLesson(id) {
     <div class="player" id="player"></div>
     ${voiceMissing ? `<p class="note">Cet appareil n’a pas de voix pour cette langue. Les phrases sans enregistrement seront lues dès qu’une voix sera disponible, ou quand l’équipe aura ajouté l’audio.</p>` : ""}
     <div class="transcript ${P.showTr ? "" : "hide-tr"}" id="transcript">${l.sentences.map((s, i) => `<button class="sent" data-sent="${i}"><span class="who ${s.speaker === "B" ? "b" : ""}">${s.speaker === "N" ? "♪" : esc(s.speaker)}</span><span style="min-width:0"><span class="t">${esc(s.text)}</span>${s.translation ? `<span class="tr" style="display:block">${esc(s.translation)}</span>` : ""}</span><span class="mini" aria-hidden="true">${I.spk}</span></button>`).join("")}</div>
+    ${/^fr/i.test(c.lang) ? "" : `<div class="card speak" id="speak">${speakHTML()}</div>`}
   </div>
   <aside class="side">
     ${l.vocab.length ? `<div class="card"><h3 style="font-size:18px">Vocabulaire</h3><div class="vocab" style="margin-top:12px">${l.vocab.map((v) => `<button data-say="${esc(v.term)}"><span><b>${esc(v.term)}</b><br><small>${esc(v.meaning)}</small></span>${I.spk}</button>`).join("")}</div></div>` : ""}
@@ -477,6 +479,54 @@ async function downloadOffline(id, btn) {
     for (const s of data.lesson.sentences.filter((x) => x.audio)) { const r = await fetch(s.audio, { credentials: "same-origin" }); if (r.ok) { const b = await r.clone().blob(); bytes += b.size; await c.put(s.audio, r); } }
     btn.innerHTML = `✓ Disponible hors connexion · ${(bytes / 1048576).toFixed(1).replace(".", ",")} Mo`;
   } catch { btn.disabled = false; btn.textContent = "Échec du téléchargement, réessaie"; }
+}
+
+/* ================= Prononciation ================= */
+// Reconnaissance vocale du navigateur (Chrome, Edge, Safari récents). Aucun enregistrement n'est conservé.
+const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+const SP = { i: 0, listening: false, result: null, good: new Set(), rec: null, sent: false };
+function speakHTML() {
+  const d = P.data; if (!d) return "";
+  const sents = d.lesson.sentences.filter((s) => s.speaker !== "N" || !/^fr/i.test(d.course.lang));
+  if (!sents.length || /^fr/i.test(d.course.lang)) return "";
+  const s = sents[Math.min(SP.i, sents.length - 1)], r = SP.result;
+  const words = s.text.split(/\s+/);
+  const heard = r ? new Set(norm(r.text).split(" ")) : null;
+  return `<div class="speak-head"><div><p class="eyebrow">Prononciation</p><h3 style="font-size:20px;margin-top:4px">Parle, l’application t’écoute</h3></div><span class="muted" style="font-size:13px">${SP.good.size} phrase${SP.good.size > 1 ? "s" : ""} réussie${SP.good.size > 1 ? "s" : ""}</span></div>
+    ${!SR ? `<p class="note" style="margin-top:12px">Ton navigateur ne permet pas encore la reconnaissance vocale. Ouvre NEXOMIA Academy avec Google Chrome pour t’entraîner à la prononciation.</p>` : ""}
+    <p class="speak-line">${heard ? words.map((w) => `<span class="${heard.has(norm(w)) ? "hit" : "miss"}">${esc(w)}</span>`).join(" ") : esc(s.text)}</p>
+    <p class="muted" style="font-size:14px">${esc(s.translation || "")}</p>
+    ${r ? `<div class="speak-res ${r.score >= 0.8 ? "good" : "bad"}" role="status"><b>${Math.round(r.score * 100)} %</b><span>${r.score >= 0.95 ? "Excellente prononciation !" : r.score >= 0.8 ? "Très bien, c’est compréhensible." : r.score >= 0.5 ? "Presque : réécoute les mots en rouge et réessaie." : "Réécoute la phrase lentement, puis réessaie."}<br><small class="muted">Compris : « ${esc(r.text)} »</small></span></div>` : ""}
+    <div class="speak-ctrls">
+      <button class="pbtn" data-spstep="-1" aria-label="Phrase précédente">${I.prev}</button>
+      <button class="btn btn-ghost btn-sm" data-spsay>${I.spk} Modèle</button>
+      <button class="micbtn ${SP.listening ? "on" : ""}" data-mic ${SR ? "" : "disabled"} aria-label="${SP.listening ? "J’écoute… touche pour arrêter" : "Appuie et prononce la phrase"}">${SP.listening ? '<span class="pulse"></span>' : ""}<svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 10v1a7 7 0 0 0 14 0v-1M12 18v4"/></svg></button>
+      <button class="pbtn" data-spstep="1" aria-label="Phrase suivante">${I.next}</button>
+    </div>
+    <p class="muted speak-count" aria-live="polite">${SP.listening ? "J’écoute… parle maintenant" : `Phrase ${Math.min(SP.i, sents.length - 1) + 1} sur ${sents.length} · touche le micro et parle`}</p>`;
+}
+function paintSpeak() { const el = $("#speak"); if (el) el.innerHTML = speakHTML(); }
+function speakSentences() { return P.data.lesson.sentences.filter((s) => s.speaker !== "N" || !/^fr/i.test(P.data.course.lang)); }
+function startMic() {
+  if (!SR) return;
+  if (SP.listening && SP.rec) { SP.rec.stop(); return; }
+  stopPlay();
+  const target = speakSentences()[SP.i];
+  const rec = new SR(); SP.rec = rec;
+  rec.lang = P.data.course.lang; rec.interimResults = false; rec.maxAlternatives = 3;
+  rec.onresult = (e) => {
+    const alts = [...e.results[0]].map((a) => a.transcript);
+    const best = alts.map((t) => ({ text: t, score: dictScore(t, target.text) })).sort((a, b) => b.score - a.score)[0];
+    SP.result = best;
+    if (best.score >= 0.8 && !SP.good.has(SP.i)) {
+      SP.good.add(SP.i);
+      if (S.me && SP.good.size >= 3 && !SP.sent) { SP.sent = true; api("/api/me/speak", { method: "POST", body: { lessonId: P.data.lesson.id, good: SP.good.size } }).then((r) => r.xp && toast(`+${r.xp} points de prononciation`)).catch(() => {}); }
+    }
+  };
+  rec.onerror = (e) => { SP.listening = false; if (e.error === "not-allowed" || e.error === "service-not-allowed") toast("Autorise le micro pour t’entraîner à la prononciation.", true); else if (e.error === "no-speech") toast("Je n’ai rien entendu. Approche-toi du micro et réessaie."); else if (e.error === "network") toast("La reconnaissance vocale a besoin d’Internet.", true); paintSpeak(); };
+  rec.onend = () => { SP.listening = false; paintSpeak(); };
+  SP.listening = true; SP.result = null; paintSpeak();
+  try { rec.start(); } catch { SP.listening = false; paintSpeak(); }
 }
 
 /* ================= Test de niveau ================= */
@@ -1024,6 +1074,9 @@ document.addEventListener("click", async (e) => {
   if (ds.rvsay !== undefined) { const it = RV.items[RV.i]; return playSentence({ text: it.item }, it.lang, 1); }
   if (ds.rvgrade !== undefined) return reviewGrade(ds.rvgrade === "1");
   if (ds.print !== undefined) { window.print(); return; }
+  if (ds.mic !== undefined) return startMic();
+  if (ds.spsay !== undefined) { const s0 = speakSentences()[SP.i]; stopPlay(); return playSentence(s0, P.data.course.lang, P.rate); }
+  if (ds.spstep) { const n0 = speakSentences().length; SP.i = Math.max(0, Math.min(n0 - 1, SP.i + +ds.spstep)); SP.result = null; if (SP.rec && SP.listening) SP.rec.abort(); paintSpeak(); return; }
   if (ds.sayslow) { stopPlay(); return playSentence({ text: ds.sayslow }, P.data.course.lang, 0.6); }
   if (ds.pick !== undefined && t.closest("#quiz")) {
     if (Q.state.result !== null) return;
