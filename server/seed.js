@@ -96,8 +96,9 @@ function syncCourse(pack) {
       let e = byKey.get(l.key) || byTitle.get(l.title) || (l.formerTitles || []).map((t) => byTitle.get(t)).find(Boolean);
       if (e && used.has(e.id)) e = null;
       let id;
-      if (e) { id = e.id; run("UPDATE lessons SET position = ?, title = ?, duration_min = ?, goal = ?, module = ?, notes = ?, content_key = ? WHERE id = ?", i + 1, l.title, l.duration_min, l.goal, l.module, l.notes, l.key, id); }
-      else id = Number(run("INSERT INTO lessons(course_id, position, title, duration_min, goal, module, notes, content_key) VALUES(?, ?, ?, ?, ?, ?, ?, ?)", c.id, i + 1, l.title, l.duration_min, l.goal, l.module, l.notes, l.key).lastInsertRowid);
+      const vj = JSON.stringify(l.voices || {});
+      if (e) { id = e.id; run("UPDATE lessons SET position = ?, title = ?, duration_min = ?, goal = ?, module = ?, notes = ?, content_key = ?, voices = ? WHERE id = ?", i + 1, l.title, l.duration_min, l.goal, l.module, l.notes, l.key, vj, id); }
+      else id = Number(run("INSERT INTO lessons(course_id, position, title, duration_min, goal, module, notes, content_key, voices) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?)", c.id, i + 1, l.title, l.duration_min, l.goal, l.module, l.notes, l.key, vj).lastInsertRowid);
       used.add(id);
       writeLessonContent(id, { sentences: l.sentences, vocab: l.vocab, questions: l.questions });
     });

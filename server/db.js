@@ -158,6 +158,7 @@ function ensureColumn(table, col, def) {
 ensureColumn("lessons", "module", "TEXT NOT NULL DEFAULT ''");
 ensureColumn("lessons", "notes", "TEXT NOT NULL DEFAULT ''");
 ensureColumn("lessons", "content_key", "TEXT");
+ensureColumn("lessons", "voices", "TEXT NOT NULL DEFAULT '{}'");
 ensureColumn("users", "daily_goal", "INTEGER NOT NULL DEFAULT 20");
 ensureColumn("users", "motive", "TEXT NOT NULL DEFAULT ''");
 ensureColumn("users", "placement", "TEXT NOT NULL DEFAULT '{}'");

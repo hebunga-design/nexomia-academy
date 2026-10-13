@@ -148,6 +148,7 @@ const D = {
   "Abonne-toi à ce cours pour débloquer toutes les leçons, les audios hors connexion et l’accompagnement.": "Subscribe to this course to unlock every lesson, offline audio and support.",
   "Déjà abonné ?": "Already subscribed?", "Connecte-toi": "Log in",
   // Exercices
+  "Traduction": "Translation", "Comment dit-on en anglais ?": "How do you say it in English?",
   "Écoute": "Listening", "Mots dans l’ordre": "Word order", "Phrase à compléter": "Fill in the gap", "Dictée": "Dictation",
   "Écouter l’extrait": "Play the clip", "Écouter la phrase": "Play the sentence", "Plus lentement": "Slower",
   "Remets les mots dans l’ordre": "Put the words in order", "Touche les mots dans le bon ordre": "Tap the words in the right order",
@@ -298,7 +299,7 @@ const R = [
   [/^Abonné jusqu’au (.+)$/, (m) => `Subscribed until ${m[1]}`],
   [/^Abonné · jusqu’au (.+)$/, (m) => `Subscribed · until ${m[1]}`],
   [/^jusqu’au (.+)$/, (m) => `until ${m[1]}`],
-  [/^(Écoute|Mots dans l’ordre|Phrase à compléter|Dictée) · (\d+)\/(\d+)$/, (m) => `${D[m[1]]} · ${m[2]}/${m[3]}`],
+  [/^(Écoute|Mots dans l’ordre|Phrase à compléter|Traduction|Dictée) · (\d+)\/(\d+)$/, (m) => `${D[m[1]]} · ${m[2]}/${m[3]}`],
   [/^L’ordre correct : (.+)$/, (m) => `Correct order: ${m[1]}`],
   [/^La phrase complète : (.+)$/, (m) => `Full sentence: ${m[1]}`],
   [/^(Leçon validée|Presque) · (\d+) %$/, (m) => `${D[m[1]]} · ${m[2]}%`],

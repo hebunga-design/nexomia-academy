@@ -13,20 +13,26 @@ function provider() {
   return null;
 }
 
-// Voix par rôle : A (femme), B (homme), N (narration).
-const ELEVEN_DEFAULT = { A: "21m00Tcm4TlvDq8ikWAM", B: "pNInz6obpgDQGcFmaJgB", N: "EXAVITQu4vr4xnSDxMaL" };
+// Voix par type de personnage : f (femme), m (homme), f2 / m2 (deuxième voix), n (narration).
+// Chaque leçon indique quel personnage (A, B, C, N…) utilise quel type de voix.
+const ELEVEN_DEFAULT = { f: "21m00Tcm4TlvDq8ikWAM", m: "pNInz6obpgDQGcFmaJgB", f2: "EXAVITQu4vr4xnSDxMaL", m2: "ErXwobaYiN019PkySvjV", n: "MF3mGyEYCl7XYWbV9V6O" };
 const GOOGLE_VOICES = {
-  "en-GB": { A: "en-GB-Neural2-A", B: "en-GB-Neural2-B", N: "en-GB-Neural2-C" },
-  "en-US": { A: "en-US-Neural2-F", B: "en-US-Neural2-D", N: "en-US-Neural2-C" },
-  "pt-BR": { A: "pt-BR-Neural2-A", B: "pt-BR-Neural2-B", N: "pt-BR-Neural2-C" },
-  "pt-PT": { A: "pt-PT-Wavenet-A", B: "pt-PT-Wavenet-B", N: "pt-PT-Wavenet-D" },
-  "fr-FR": { A: "fr-FR-Neural2-A", B: "fr-FR-Neural2-B", N: "fr-FR-Neural2-C" },
-  "es-ES": { A: "es-ES-Neural2-A", B: "es-ES-Neural2-B", N: "es-ES-Neural2-C" },
-  "sw-KE": { A: "sw-KE-Standard-A", B: "sw-KE-Standard-B", N: "sw-KE-Standard-A" },
+  "en-GB": { f: "en-GB-Neural2-A", m: "en-GB-Neural2-B", f2: "en-GB-Neural2-C", m2: "en-GB-Neural2-D", n: "en-GB-Neural2-F" },
+  "en-US": { f: "en-US-Neural2-F", m: "en-US-Neural2-D", f2: "en-US-Neural2-C", m2: "en-US-Neural2-A", n: "en-US-Neural2-H" },
+  "pt-BR": { f: "pt-BR-Neural2-A", m: "pt-BR-Neural2-B", f2: "pt-BR-Neural2-C", m2: "pt-BR-Wavenet-B", n: "pt-BR-Neural2-C" },
+  "pt-PT": { f: "pt-PT-Wavenet-A", m: "pt-PT-Wavenet-B", f2: "pt-PT-Wavenet-D", m2: "pt-PT-Wavenet-C", n: "pt-PT-Wavenet-D" },
+  "fr-FR": { f: "fr-FR-Neural2-A", m: "fr-FR-Neural2-B", f2: "fr-FR-Neural2-C", m2: "fr-FR-Neural2-D", n: "fr-FR-Neural2-E" },
+  "es-ES": { f: "es-ES-Neural2-A", m: "es-ES-Neural2-B", f2: "es-ES-Neural2-C", m2: "es-ES-Neural2-F", n: "es-ES-Neural2-E" },
+  "sw-KE": { f: "sw-KE-Standard-A", m: "sw-KE-Standard-B", f2: "sw-KE-Standard-A", m2: "sw-KE-Standard-B", n: "sw-KE-Standard-A" },
 };
+const DEFAULT_ROLES = { A: "f", B: "m", N: "n" };
+function voiceType(speaker, voicesJson) {
+  let v = {}; try { v = JSON.parse(voicesJson || "{}"); } catch {}
+  return v[speaker] || DEFAULT_ROLES[speaker] || "f";
+}
 
 async function synthElevenLabs(text, lang, speaker) {
-  const voice = process.env[`ELEVENLABS_VOICE_${speaker}`] || ELEVEN_DEFAULT[speaker] || ELEVEN_DEFAULT.A;
+  const voice = process.env[`ELEVENLABS_VOICE_${speaker.toUpperCase()}`] || ELEVEN_DEFAULT[speaker] || ELEVEN_DEFAULT.f;
   const base = process.env.ELEVENLABS_BASE_URL || "https://api.elevenlabs.io";
   const res = await fetch(`${base}/v1/text-to-speech/${encodeURIComponent(voice)}?output_format=mp3_44100_64`, {
     method: "POST",
@@ -39,7 +45,7 @@ async function synthElevenLabs(text, lang, speaker) {
 }
 async function synthGoogle(text, lang, speaker) {
   const voices = GOOGLE_VOICES[lang] || GOOGLE_VOICES[Object.keys(GOOGLE_VOICES).find((k) => k.startsWith(lang.slice(0, 2)))] || null;
-  const voice = voices ? { languageCode: lang, name: voices[speaker] || voices.A } : { languageCode: lang };
+  const voice = voices ? { languageCode: lang, name: voices[speaker] || voices.f } : { languageCode: lang };
   const base = process.env.GOOGLE_TTS_BASE_URL || "https://texttospeech.googleapis.com";
   const res = await fetch(`${base}/v1/text:synthesize?key=${encodeURIComponent(process.env.GOOGLE_TTS_API_KEY)}`, {
     method: "POST", headers: { "Content-Type": "application/json" },
@@ -53,7 +59,7 @@ async function synthGoogle(text, lang, speaker) {
 function synth(text, lang, speaker) { return provider() === "elevenlabs" ? synthElevenLabs(text, lang, speaker) : synthGoogle(text, lang, speaker); }
 
 function missing(courseId) {
-  return all(`SELECT s.id, s.text, s.speaker, c.lang FROM sentences s JOIN lessons l ON l.id = s.lesson_id JOIN courses c ON c.id = l.course_id
+  return all(`SELECT s.id, s.text, s.speaker, l.voices, c.lang FROM sentences s JOIN lessons l ON l.id = s.lesson_id JOIN courses c ON c.id = l.course_id
               WHERE c.id = ? AND s.audio_file IS NULL ORDER BY l.position, s.position`, courseId);
 }
 function status() {
@@ -75,7 +81,7 @@ async function runJob(courseId, userId) {
     for (const s of list) {
       if (job.stopped) break;
       try {
-        const buf = await synth(s.text, s.lang, ["A", "B", "N"].includes(s.speaker) ? s.speaker : "A");
+        const buf = await synth(s.text, s.lang, voiceType(s.speaker, s.voices));
         if (buf.length < 500) throw new Error("Audio vide");
         const name = crypto.randomBytes(16).toString("hex") + ".mp3";
         fs.writeFileSync(path.join(AUDIO_DIR, name), buf);

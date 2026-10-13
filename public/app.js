@@ -460,7 +460,13 @@ function buildExercises(lesson, lang) {
       items.push({ type: "gap", say: g.text, shown, tr: g.translation, options, answer: options.indexOf(target.w) });
     }
   }
-  // 3. Dictée
+  // 3. Traduction : retrouver la phrase anglaise à partir du français
+  const tr = pick((x) => words(x.text).length >= 4);
+  if (tr) {
+    const others = shuffleWith(pool.filter((x) => x.text !== tr.text && words(x.text).length >= 3), rnd).slice(0, 2).map((x) => x.text);
+    if (others.length === 2) { const options = shuffleWith([tr.text, ...others], rnd); items.push({ type: "trans", say: tr.text, fr: tr.translation, options, answer: options.indexOf(tr.text) }); }
+  }
+  // 4. Dictée
   const dct = pick((x) => words(x.text).length <= 9);
   if (dct) items.push({ type: "dict", say: dct.text, text: dct.text, tr: dct.translation });
   return items;
@@ -474,7 +480,7 @@ function dictScore(typed, ref) {
   return b.length ? Math.max(0, 1 - d[a.length][b.length] / b.length) : 0;
 }
 const md = (t) => esc(t).replace(/\*\*(.+?)\*\*/g, "<b>$1</b>");
-const TYPE_LABEL = { listen: "Écoute", order: "Mots dans l’ordre", gap: "Phrase à compléter", dict: "Dictée" };
+const TYPE_LABEL = { listen: "Écoute", order: "Mots dans l’ordre", gap: "Phrase à compléter", trans: "Traduction", dict: "Dictée" };
 function quizHTML() {
   const items = Q.items, st = Q.state;
   if (!items.length) return `<p class="eyebrow">Fin de leçon</p><h3 style="font-size:18px;margin:8px 0 12px">As-tu tout écouté ?</h3><button class="btn btn-primary" style="width:100%" data-finish>Terminer la leçon</button>`;
@@ -482,6 +488,10 @@ function quizHTML() {
   const head = `<div class="qhead"><p class="eyebrow">${TYPE_LABEL[q.type]} · ${st.i + 1}/${items.length}</p><div class="qdots" aria-hidden="true">${items.map((_, k) => `<i class="${k < st.i || (k === st.i && done) ? (st.marks[k] ? "ok" : "ko") : k === st.i ? "cur" : ""}"></i>`).join("")}</div></div>`;
   const nextBtn = done ? `<div class="feedback ${st.result ? "good" : "bad"}" role="status"><b>${st.result ? ["Bien joué !", "Excellent !", "Parfait !", "Bien entendu !"][st.i % 4] : "Pas tout à fait."}</b> ${st.fb || ""}</div>
     <button class="btn btn-primary" style="width:100%;margin-top:12px" data-qnext>${st.i + 1 < items.length ? "Continuer" : "Voir mon résultat"}</button>` : "";
+  if (q.type === "trans") {
+    return `${head}<h3 class="qtitle">Comment dit-on en anglais ?</h3><p class="gap-line" style="font-weight:600">« ${esc(q.fr)} »</p>
+      <div class="opts" role="group">${q.options.map((o, i) => `<button class="opt ${done && i === q.answer ? "right" : ""} ${done && i === st.picked && i !== q.answer ? "wrong" : ""}" data-pick="${i}" ${done ? "disabled" : ""}>${esc(o)}</button>`).join("")}</div>${nextBtn}`;
+  }
   if (q.type === "listen" || q.type === "gap") {
     const title = q.type === "gap" ? `<h3 class="qtitle">Complète la phrase</h3><p class="gap-line">${esc(q.shown)}</p><p class="muted" style="font-size:14px;margin-bottom:10px">${esc(q.tr)}</p>` : `<h3 class="qtitle">${esc(q.prompt)}</h3>`;
     return `${head}${title}
@@ -1417,7 +1427,8 @@ document.addEventListener("click", async (e) => {
   if (ds.pick !== undefined && t.closest("#quiz")) {
     if (Q.state.result !== null) return;
     const q = Q.items[Q.state.i]; Q.state.picked = +ds.pick;
-    return answerItem(+ds.pick === q.answer, q.type === "gap" ? `La phrase complète : « ${esc(q.say)} »` : md(q.explanation));
+    if (q.type === "trans") playSentence(P.data.lesson.sentences.find((x) => x.text === q.say) || { text: q.say }, P.data.course.lang, P.rate);
+    return answerItem(+ds.pick === q.answer, q.type === "gap" ? `La phrase complète : « ${esc(q.say)} »` : q.type === "trans" ? `« ${esc(q.say)} »` : md(q.explanation));
   }
   if (ds.tile !== undefined) { Q.state.chosen.push(+ds.tile); $("#quiz").innerHTML = quizHTML(); return; }
   if (ds.untile !== undefined) { Q.state.chosen.splice(+ds.untile, 1); $("#quiz").innerHTML = quizHTML(); return; }
