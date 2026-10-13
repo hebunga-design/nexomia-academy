@@ -157,6 +157,7 @@ function ensureColumn(table, col, def) {
 }
 ensureColumn("lessons", "module", "TEXT NOT NULL DEFAULT ''");
 ensureColumn("lessons", "notes", "TEXT NOT NULL DEFAULT ''");
+ensureColumn("lessons", "content_key", "TEXT");
 ensureColumn("users", "daily_goal", "INTEGER NOT NULL DEFAULT 20");
 ensureColumn("users", "motive", "TEXT NOT NULL DEFAULT ''");
 ensureColumn("users", "placement", "TEXT NOT NULL DEFAULT '{}'");
@@ -167,6 +168,18 @@ ensureColumn("users", "last_weekly", "TEXT");
 ensureColumn("orders", "gift", "INTEGER NOT NULL DEFAULT 0");
 ensureColumn("orders", "gift_to", "TEXT NOT NULL DEFAULT ''");
 ensureColumn("orders", "gift_msg", "TEXT NOT NULL DEFAULT ''");
+db.exec(`CREATE TABLE IF NOT EXISTS exams (
+  id INTEGER PRIMARY KEY,
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  course_id INTEGER NOT NULL REFERENCES courses(id) ON DELETE CASCADE,
+  module TEXT NOT NULL,
+  items TEXT NOT NULL,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  submitted_at TEXT,
+  score INTEGER,
+  passed INTEGER NOT NULL DEFAULT 0
+);
+CREATE INDEX IF NOT EXISTS idx_exams_user ON exams(user_id, course_id, module);`);
 db.exec(`CREATE TABLE IF NOT EXISTS gift_codes (
   code TEXT PRIMARY KEY,
   order_id INTEGER NOT NULL UNIQUE REFERENCES orders(id),

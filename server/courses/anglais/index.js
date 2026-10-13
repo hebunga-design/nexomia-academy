@@ -20,15 +20,18 @@ function placeAnswer([say, prompt, options, answer, explanation], n) {
   return { say, prompt, options: opts, answer: target, explanation };
 }
 let qn = 0;
+const slug = (t) => t.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
 const lessons = LEVELS.flatMap(([module, list]) => list.map((l) => ({
+  key: l.k || `${module.split("·")[0].trim().toLowerCase()}-${slug(l.t)}`, formerTitles: l.was || [],
   module, title: l.t, duration_min: l.d, goal: l.goal, notes: l.notes.trim(),
   sentences: l.s.map(S),
   vocab: l.v.map(([term, meaning]) => ({ term, meaning })),
-  questions: l.q.map((q) => placeAnswer(q, (qn++ * 7 + 1) % 5)),
+  // L'extrait d'écoute pointe toujours vers une phrase entière du dialogue, pour profiter des voix enregistrées.
+  questions: l.q.map((q) => { const full = l.s.find(([, t]) => t === q[0]) || l.s.find(([, t]) => t.includes(q[0])); return placeAnswer(full ? [full[1], ...q.slice(1)] : q, (qn++ * 7 + 1) % 5); }),
 })));
 
 module.exports = {
-  VERSION: 1,
+  VERSION: 2,
   slug: "anglais",
   meta: {
     code: "EN", level: "Tous niveaux · A1 à C2", lang: "en-GB",

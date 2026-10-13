@@ -42,9 +42,17 @@ function lessonXp(userId, lessonId, correct, passed) {
   return g;
 }
 
-// Certificat : délivré quand toutes les leçons d'un niveau sont validées.
+// Certificat : délivré quand toutes les leçons d'un niveau sont validées ET que l'examen du niveau est réussi.
+const EXAM_PASS = 70, EXAM_SIZE = 16;
+function moduleStatus(userId, courseId, module) {
+  const mod = all(`SELECT l.id, p.completed_at FROM lessons l LEFT JOIN progress p ON p.lesson_id = l.id AND p.user_id = ? WHERE l.course_id = ? AND l.module = ?`, userId, courseId, module);
+  const examPassed = !!one("SELECT 1 FROM exams WHERE user_id = ? AND course_id = ? AND module = ? AND passed = 1", userId, courseId, module);
+  const cert = one("SELECT code FROM certificates WHERE user_id = ? AND course_id = ? AND module = ?", userId, courseId, module);
+  return { total: mod.length, done: mod.filter((m) => m.completed_at).length, examPassed, cert: cert ? cert.code : null };
+}
 function maybeCertificate(user, lesson) {
   if (!lesson.module) return null;
+  if (!one("SELECT 1 FROM exams WHERE user_id = ? AND course_id = ? AND module = ? AND passed = 1", user.id, lesson.course_id, lesson.module)) return null;
   const mod = all(`SELECT l.id, p.completed_at, p.best_score FROM lessons l LEFT JOIN progress p ON p.lesson_id = l.id AND p.user_id = ?
                    WHERE l.course_id = ? AND l.module = ?`, user.id, lesson.course_id, lesson.module);
   if (!mod.length || mod.some((m) => !m.completed_at)) return null;
@@ -129,4 +137,26 @@ function gradeReview(u, lessonId, item, knew) {
   return { box, days };
 }
 
-module.exports = { today, award, totalXp, xpOn, activeDays, streakOf, bestStreak, lessonXp, maybeCertificate, certificate, certificatesOf, badgesOf, weeklyBoard, addToReview, dueReviews, reviewCounts, gradeReview };
+// Examen : questions tirées des leçons du niveau + phrases à compléter. Les réponses restent sur le serveur.
+function shuffle(a) { const b = a.slice(); for (let i = b.length - 1; i > 0; i--) { const j = crypto.randomInt(i + 1); [b[i], b[j]] = [b[j], b[i]]; } return b; }
+function buildExam(courseId, module) {
+  const lessons = all("SELECT id FROM lessons WHERE course_id = ? AND module = ?", courseId, module).map((l) => l.id);
+  if (!lessons.length) return [];
+  const ph = lessons.map(() => "?").join(",");
+  const qs = all(`SELECT say, prompt, options, answer, explanation FROM questions WHERE lesson_id IN (${ph})`, ...lessons).map((q) => ({ type: "listen", say: q.say, prompt: q.prompt, options: JSON.parse(q.options), answer: q.answer, explanation: q.explanation }));
+  const sents = all(`SELECT text, translation FROM sentences WHERE lesson_id IN (${ph}) AND translation <> ''`, ...lessons);
+  const words = [...new Set(sents.flatMap((s) => s.text.split(/\s+/)).map((w) => w.replace(/[^\p{L}’']/gu, "")).filter((w) => w.length >= 4))];
+  const gaps = shuffle(sents.filter((s) => s.text.split(/\s+/).length >= 4)).slice(0, 12).map((s) => {
+    const toks = s.text.split(/\s+/), cands = toks.map((w, i) => ({ w: w.replace(/[^\p{L}’']/gu, ""), i })).filter((x) => x.w.length >= 4);
+    if (!cands.length) return null;
+    const t = cands[crypto.randomInt(cands.length)];
+    const wrong = shuffle(words.filter((w) => w.toLowerCase() !== t.w.toLowerCase())).slice(0, 3);
+    if (wrong.length < 3) return null;
+    const options = shuffle([t.w, ...wrong]);
+    return { type: "gap", say: s.text, prompt: "Complète la phrase", shown: toks.map((w, i) => (i === t.i ? w.replace(t.w, "_____") : w)).join(" "), tr: s.translation, options, answer: options.indexOf(t.w), explanation: `« ${s.text} »` };
+  }).filter(Boolean);
+  const nGap = Math.min(gaps.length, Math.round(EXAM_SIZE * 0.35));
+  return shuffle([...shuffle(qs).slice(0, EXAM_SIZE - nGap), ...gaps.slice(0, nGap)]);
+}
+
+module.exports = { EXAM_PASS, EXAM_SIZE, moduleStatus, buildExam, today, award, totalXp, xpOn, activeDays, streakOf, bestStreak, lessonXp, maybeCertificate, certificate, certificatesOf, badgesOf, weeklyBoard, addToReview, dueReviews, reviewCounts, gradeReview };

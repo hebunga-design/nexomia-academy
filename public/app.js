@@ -184,7 +184,7 @@ const routes = [
   [/^#\/parcours$/, vDash, "auth"], [/^#\/abonnements$/, vSubs], [/^#\/connexion$/, vLogin], [/^#\/inscription$/, vRegister],
   [/^#\/reinitialiser\/([\w-]+)$/, vReset], [/^#\/recuperation$/, vRecover], [/^#\/studio$/, vStudio, "creator"], [/^#\/studio\/(\d+)$/, vStudioCourse, "creator"],
   [/^#\/admin$/, vAdmin, "admin"],
-  [/^#\/test-niveau\/([\w-]+)$/, vPlacement], [/^#\/bienvenue$/, vWelcome, "auth"], [/^#\/certificat\/([\w-]+)$/, vCertificate], [/^#\/revision$/, vReview, "auth"], [/^#\/suggestions$/, vSuggestions], [/^#\/cadeau(?:\/([\w-]+))?$/, vGift], [/^#\/mot-de-passe-oublie$/, vForgot],
+  [/^#\/test-niveau\/([\w-]+)$/, vPlacement], [/^#\/bienvenue$/, vWelcome, "auth"], [/^#\/certificat\/([\w-]+)$/, vCertificate], [/^#\/revision$/, vReview, "auth"], [/^#\/suggestions$/, vSuggestions], [/^#\/grammaire$/, () => vGrammar("anglais")], [/^#\/lexique(?:\/([\w-]+))?$/, (k) => vLexicon("anglais", k)], [/^#\/examen\/([\w-]+)\/(\w+)$/, vExam, "auth"], [/^#\/cadeau(?:\/([\w-]+))?$/, vGift], [/^#\/mot-de-passe-oublie$/, vForgot],
 ];
 function parseHash() { const h = location.hash || "#/"; const [p, q] = h.split("?"); return { path: p, query: new URLSearchParams(q || "") }; }
 let renderId = 0;
@@ -330,18 +330,26 @@ function modulesNav(lessons) {
 // Mise en forme simple et sûre des explications : **gras**, listes « - », paragraphes.
 function richNotes(t) {
   const lines = esc(t).replace(/\*\*(.+?)\*\*/g, "<b>$1</b>").split("\n");
-  let html = "", list = false;
+  let html = "", list = false, table = false;
   for (const ln of lines) {
+    if (/^\s*\|.*\|\s*$/.test(ln)) {
+      const cells = ln.trim().slice(1, -1).split("|").map((c) => c.trim());
+      if (list) { html += "</ul>"; list = false; }
+      if (!table) { html += `<div class="tblwrap"><table class="gt"><thead><tr>${cells.map((c) => `<th>${c}</th>`).join("")}</tr></thead><tbody>`; table = true; }
+      else html += `<tr>${cells.map((c) => `<td>${c}</td>`).join("")}</tr>`;
+      continue;
+    }
+    if (table) { html += "</tbody></table></div>"; table = false; }
     const m = ln.match(/^\s*[-•]\s+(.*)$/);
     if (m) { if (!list) { html += "<ul>"; list = true; } html += `<li>${m[1]}</li>`; continue; }
     if (list) { html += "</ul>"; list = false; }
     if (ln.trim()) html += `<p>${ln}</p>`;
   }
-  return html + (list ? "</ul>" : "");
+  return html + (list ? "</ul>" : "") + (table ? "</tbody></table></div>" : "");
 }
 async function vCourse(slug) {
   await loadCatalog();
-  const { course: c, lessons, certificates = [], placement_test } = await api(`/api/courses/${encodeURIComponent(slug)}`);
+  const { course: c, lessons, certificates = [], placement_test, modules = {} } = await api(`/api/courses/${encodeURIComponent(slug)}`);
   const certOf = (m) => certificates.find((x) => x.module === m);
   const myLevel = S.me && S.me.placement && S.me.placement[slug];
   S.after = () => loadReviews(slug);
@@ -352,12 +360,16 @@ async function vCourse(slug) {
   <div class="dash">
     <div style="min-width:0">${placement_test ? `<div class="ptbanner">${myLevel ? `<span>Ton niveau : <b>${esc(myLevel.level)} · ${esc(LEVEL_FR[myLevel.level] || "")}</b></span><a class="btn btn-ghost btn-sm" href="#/test-niveau/${esc(slug)}">Refaire le test</a>` : `<span><b>Pas sûr de ton niveau ?</b><br><small class="muted">10 minutes pour savoir où commencer, de A1 à C2.</small></span><a class="btn btn-primary btn-sm" href="#/test-niveau/${esc(slug)}">Passer le test</a>`}</div>` : ""}${modulesNav(lessons)}${groupByModule(lessons).map(([mod, ls], gi) => `<section class="modsec" id="mod-${gi}">
       ${mod ? `<div class="modhead"><h2>${esc(mod)}</h2><span class="muted">${ls.filter((l) => l.completed).length}/${ls.length} leçon${ls.length > 1 ? "s" : ""}</span></div>
+      ${!certOf(mod) && modules[mod] && modules[mod].total >= 3 ? (modules[mod].done === modules[mod].total
+        ? `<a class="exambanner ready" href="#/examen/${esc(slug)}/${esc(mod.split("·")[0].trim())}"><span class="cert-lv">${esc(mod.split("·")[0].trim())}</span><span><b>Examen de fin de niveau débloqué</b><br><small>16 questions · 70 % pour obtenir ton certificat</small></span></a>`
+        : `<p class="exambanner"><span class="muted">Examen et certificat ${esc(mod.split("·")[0].trim())} : encore ${modules[mod].total - modules[mod].done} leçon${modules[mod].total - modules[mod].done > 1 ? "s" : ""} à valider</span></p>`) : ""}
       ${certOf(mod) ? `<a class="certitem" style="margin-bottom:10px" href="#/certificat/${esc(certOf(mod).code)}"><span class="cert-lv">${esc(mod.split("·")[0].trim())}</span><span><b>Niveau validé</b><br><small class="muted">Voir et télécharger mon certificat</small></span></a>` : ""}` : ""}
       <div class="llist">${ls.map((l) => `<a class="lrow ${l.completed ? "done" : ""} ${l.locked ? "locked" : ""}" href="#/lecon/${l.id}" style="text-decoration:none;color:inherit">
       <span class="num">${l.completed ? "✓" : l.position}</span><span style="min-width:0"><b>${esc(l.title)}</b><br><span class="st">${l.duration_min} min${l.position === 1 && !sub ? " · gratuite" : ""}${l.score !== null && l.score !== undefined ? ` · meilleur score ${l.score} %` : ""}</span></span>
       <span class="st">${l.locked ? "Abonnement" : l.completed ? "Terminée" : "Écouter"}</span></a>`).join("")}</div></section>`).join("")}
       <section class="card reviews" id="reviews"></section></div>
     <div class="card" style="align-self:start"><p class="muted">${esc(c.description)}</p>
+      ${slug === "anglais" ? `<div class="reflinks"><a href="#/grammaire">📘 Fiches de grammaire</a><a href="#/lexique">🔤 Lexique thématique</a><a href="#/test-niveau/anglais">🎯 Test de niveau</a></div>` : ""}
       ${sub ? `<p style="margin-top:14px"><span class="tag subbed">Abonné jusqu’au ${fmtD(sub)}</span></p><a class="btn btn-ghost btn-sm" style="margin-top:12px" data-subscribe="${c.id}" href="#/abonnements">Prolonger d’un mois</a>`
       : `<p class="amount" style="font-family:var(--f-display);font-size:40px;font-weight:800;margin-top:16px">${money(S.pricing.tiers[0])} <small class="muted" style="font-size:15px;font-weight:500">par mois</small></p><button class="btn btn-primary" style="width:100%;margin-top:12px" data-subscribe="${c.id}">S’abonner à ce cours</button><p class="muted" style="font-size:13px;margin-top:10px">La première leçon est gratuite. Prix réduit si tu prends plusieurs cours ensemble.</p>`}
     </div></div>`;
@@ -408,6 +420,7 @@ async function vLesson(id) {
   <aside class="side">
     ${l.vocab.length ? `<div class="card"><h3 style="font-size:18px">Vocabulaire</h3><div class="vocab" style="margin-top:12px">${l.vocab.map((v) => `<button data-say="${esc(v.term)}"><span><b>${esc(v.term)}</b><br><small>${esc(v.meaning)}</small></span>${I.spk}</button>`).join("")}</div></div>` : ""}
     <div class="card quiz" id="quiz">${quizHTML()}</div>
+    ${c.slug === "anglais" ? `<div class="reflinks card"><a href="#/grammaire">📘 Toutes les fiches de grammaire</a><a href="#/lexique">🔤 Lexique thématique</a></div>` : ""}
     ${next ? `<a class="btn btn-ghost" href="#/lecon/${next.id}">Leçon suivante : ${esc(next.title)}</a>` : ""}
   </aside></div>`;
 }
@@ -504,6 +517,7 @@ async function finishLesson() {
     <p class="eyebrow">${passed ? "Leçon validée" : "Presque"} · ${score} %</p><h2 id="ct" style="margin:8px 0 10px">${passed ? "Bravo !" : "Encore un petit effort"}</h2>
     <p class="muted" style="font-size:17px">${passed ? esc(d.lesson.goal || "Tu as terminé cette leçon.") : "Il faut 80 % pour valider. Réécoute les phrases en mode phrase par phrase, puis refais les exercices."}</p>
     ${res ? `<div class="gain"><span class="pill xp">⚡ +${res.xp} points</span><span class="gain-goal"><i style="width:${Math.min(100, Math.round((res.today / res.goal) * 100))}%"></i></span><small>${res.today >= res.goal ? "Objectif du jour atteint !" : `Objectif du jour : ${res.today} / ${res.goal}`}</small></div>` : ""}
+    ${res && res.examReady ? `<a class="certwin" href="#/examen/${esc(P.data.course.slug)}/${esc(res.module.split("·")[0].trim())}" data-close><span class="cert-lv">${esc(res.module.split("·")[0].trim())}</span><span><b>Toutes les leçons du niveau sont validées !</b><br><small>Passe l’examen pour obtenir ton certificat.</small></span></a>` : ""}
     ${res && res.certificate ? `<a class="certwin" href="#/certificat/${esc(res.certificate.code)}" data-close><span class="cert-lv">${esc(res.certificate.module.split("·")[0].trim())}</span><span><b>Niveau terminé !</b><br><small>Ton certificat ${esc(res.certificate.module)} est prêt. Ouvre-le.</small></span></a>` : ""}
     <p class="muted" style="font-size:14px;margin-top:8px">${Q.state.correct} bonne${Q.state.correct > 1 ? "s" : ""} réponse${Q.state.correct > 1 ? "s" : ""} sur ${qs.length}</p>
     ${!S.me ? `<p class="muted" style="font-size:14px;margin-top:10px">Crée un compte gratuit pour enregistrer ta progression.</p>` : ""}
@@ -682,6 +696,95 @@ async function vGift(code) {
       : `<div style="display:grid;gap:10px;margin-top:16px"><a class="btn btn-primary" href="#/inscription?next=${encodeURIComponent("#/cadeau/" + g.code)}">Créer mon compte gratuit et activer</a><a class="btn btn-ghost" href="#/connexion?next=${encodeURIComponent("#/cadeau/" + g.code)}">J’ai déjà un compte</a></div>`}
     <p class="muted" style="font-size:13px;margin-top:16px">Chaque abonnement NEXOMIA soutient aussi nos actions auprès des jeunes vulnérables.</p></div>`;
 }
+
+/* ================= Examen de fin de niveau ================= */
+const EX = { d: null, i: -1, answers: [], result: null, slug: "", level: "" };
+async function vExam(slug, level) {
+  stopPlay();
+  Object.assign(EX, { d: null, i: -1, answers: [], result: null, slug, level, err: null });
+  return `<a class="back" href="#/cours/${esc(slug)}">${I.back} Retour au cours</a><div class="ptest card" id="exam">${examIntroHTML()}</div>`;
+}
+function examIntroHTML() {
+  return `<div style="text-align:center">${motif(64)}<p class="eyebrow" style="margin-top:14px">Examen de fin de niveau · ${esc(EX.level.toUpperCase())}</p>
+    <h1 style="font-size:clamp(28px,5vw,40px);margin:8px 0">Valide ton niveau ${esc(EX.level.toUpperCase())}</h1>
+    <p class="muted" style="max-width:48ch;margin:0 auto">16 questions tirées de tout le niveau : écoute et phrases à compléter. Il faut <b>70 %</b> pour obtenir ton certificat. Pas de correction pendant l’examen : tu verras tes résultats à la fin.</p>
+    <ul class="ticks" style="text-align:left;max-width:360px;margin:18px auto 0"><li>Environ 10 minutes</li><li>Mets le son pour les questions d’écoute</li><li>Tu peux repasser l’examen si besoin</li></ul>
+    ${EX.err ? `<p class="note" style="margin-top:14px">${esc(EX.err)}</p>` : ""}
+    <button class="btn btn-primary" style="margin-top:20px" data-exstart>Commencer l’examen</button></div>`;
+}
+function examHTML() {
+  const d = EX.d;
+  if (EX.result) {
+    const r = EX.result;
+    return `<div class="ptest-result">${motif(72)}<p class="eyebrow">Résultat de l’examen</p>
+      <div class="levelbadge ${r.passed ? "" : "fail"}" aria-hidden="true">${r.score}%</div>
+      <h1 style="font-size:clamp(26px,5vw,38px)">${r.passed ? `Niveau ${esc(EX.level.toUpperCase())} validé !` : "Pas encore, mais tu y es presque"}</h1>
+      <p class="muted" style="max-width:46ch;margin:10px auto 0">${r.passed ? (r.certificate ? "Ton certificat est prêt. Bravo pour ce travail !" : "Ton examen est réussi.") : `Il faut ${r.pass} %. Revois les questions ci-dessous, réécoute les leçons concernées, puis retente ta chance.`}</p>
+      <div style="display:grid;gap:10px;max-width:360px;margin:20px auto 0">
+        ${r.certificate ? `<a class="btn btn-primary" href="#/certificat/${esc(r.certificate.code)}">Voir mon certificat</a>` : ""}
+        ${!r.passed ? `<button class="btn btn-primary" data-exstart>Repasser l’examen</button>` : ""}
+        <a class="btn btn-ghost" href="#/cours/${esc(EX.slug)}">Retour au cours</a></div>
+      ${!r.passed ? `<h2 style="font-size:20px;margin:26px 0 10px;text-align:left">Correction</h2><div class="exrev">${d.items.map((q, i) => { const x = r.results[i]; return `<div class="exr ${x.correct ? "ok" : "ko"}"><b>${i + 1}. ${x.correct ? "✓" : "✗"}</b> <span>${q.type === "gap" ? esc(q.shown) : esc(q.prompt) + (q.say ? ` <small class="muted">(« ${esc(q.say)} »)</small>` : "")}</span>${!x.correct ? `<p class="muted" style="font-size:14px;margin-top:4px">Bonne réponse : <b>${esc(q.options[x.answer])}</b>. ${md(x.explanation || "")}</p>` : ""}</div>`; }).join("")}</div>` : ""}
+    </div>`;
+  }
+  const q = d.items[EX.i], n = d.items.length, picked = EX.answers[EX.i];
+  return `<div class="ptop"><span class="eyebrow">Question ${EX.i + 1} sur ${n}</span><span class="muted" style="font-size:13px">${esc(d.module)}</span></div>
+    <div class="pbar"><i style="width:${Math.max(3, Math.round((EX.i / n) * 100))}%"></i></div>
+    ${q.type === "gap" ? `<h2 class="pq">Complète la phrase</h2><p class="gap-line" data-noi18n>${esc(q.shown)}</p><p class="muted" style="font-size:14px;margin-bottom:10px">${esc(q.tr)}</p>` : `<h2 class="pq">${esc(q.prompt)}</h2><button class="btn btn-dark btn-sm" data-exsay="${esc(q.say)}">${I.spk} Écouter</button>`}
+    <div class="opts" role="radiogroup" style="margin-top:6px">${q.options.map((o, k) => `<button class="opt ${picked === k ? "sel" : ""}" role="radio" aria-checked="${picked === k}" data-expick="${k}">${esc(o)}</button>`).join("")}</div>
+    <div class="onb-nav" style="margin-top:16px"><button class="btn btn-ghost" data-exprev ${EX.i ? "" : "disabled"}>Précédente</button>
+      ${EX.i + 1 < n ? `<button class="btn btn-primary" data-exnext ${picked === undefined ? "disabled" : ""}>Suivante</button>` : `<button class="btn btn-primary" data-exsubmit ${EX.answers.filter((a) => a !== undefined).length < n ? "disabled" : ""}>Terminer et corriger</button>`}</div>`;
+}
+async function examStart() {
+  try { EX.d = await api(`/api/exam/${encodeURIComponent(EX.slug)}/${encodeURIComponent(EX.level)}`); EX.i = 0; EX.answers = []; EX.result = null; $("#exam").innerHTML = examHTML(); }
+  catch (e) { EX.err = e.message; $("#exam").innerHTML = examIntroHTML(); }
+}
+async function examSubmit(btn) {
+  btn.disabled = true;
+  try { EX.result = await api(`/api/exam/${EX.d.id}/submit`, { method: "POST", body: { answers: EX.answers } }); if (EX.result.xp) toast(`+${EX.result.xp} points`); S.catalog = null; $("#exam").innerHTML = examHTML(); window.scrollTo(0, 0); }
+  catch (e) { toast(e.message, true); btn.disabled = false; }
+}
+
+/* ================= Grammaire et lexique ================= */
+const GR = { d: null, q: "", lvl: "Tous" };
+async function vGrammar(slug = "anglais") {
+  GR.d = await api(`/api/grammar/${encodeURIComponent(slug)}`); GR.slug = slug;
+  return `<a class="back" href="#/cours/${esc(slug)}">${I.back} ${esc(GR.d.course.title)}</a>
+    <p class="eyebrow">Bibliothèque</p><h1 style="font-size:clamp(28px,4.4vw,42px);margin:8px 0">Fiches de grammaire</h1>
+    <p class="muted" style="max-width:60ch">Toutes les explications du cours au même endroit, plus les fiches de référence : verbes irréguliers, temps, prépositions… Cherche un mot ou filtre par niveau.</p>
+    <div class="refbar"><label class="sr" for="grq">Rechercher</label><input id="grq" type="search" placeholder="Rechercher : present perfect, since, would…" value="${esc(GR.q)}" autocomplete="off">
+      <div class="filters" role="group" aria-label="Niveaux">${["Tous", "Référence", "A1", "A2", "B1", "B2", "C1", "C2"].map((l) => `<button class="chip" data-grlvl="${l}" aria-pressed="${GR.lvl === l}">${l}</button>`).join("")}</div></div>
+    <div id="grlist">${grammarList()}</div>`;
+}
+function grammarList() {
+  const d = GR.d, q = norm(GR.q);
+  const items = [...d.sheets.map((x) => ({ level: "Référence", title: x.t, notes: x.notes, key: x.k })), ...d.lessons.map((l) => ({ level: (l.module || "").split("·")[0].trim(), module: l.module, title: l.title, notes: l.notes, id: l.id }))]
+    .filter((x) => (GR.lvl === "Tous" || x.level === GR.lvl) && (!q || norm(x.title + " " + x.notes).includes(q)));
+  if (!items.length) return `<p class="muted" style="margin-top:16px">Aucune fiche ne correspond à ta recherche.</p>`;
+  return `<p class="muted" style="font-size:13px;margin:12px 0 8px">${items.length} fiche${items.length > 1 ? "s" : ""}</p><div class="reflist">${items.map((x) => `<details class="refitem" ${q || items.length === 1 ? "open" : ""}><summary><span class="tag ${x.level === "Référence" ? "subbed" : ""}">${esc(x.level)}</span><b>${esc(x.title)}</b></summary>
+      <div class="notes-card" style="margin:10px 0 0">${richNotes(x.notes)}${x.id ? `<p style="margin-top:10px"><a href="#/lecon/${x.id}">Ouvrir la leçon « ${esc(x.title)} »</a></p>` : ""}</div></details>`).join("")}</div>`;
+}
+const LX = { d: null, theme: null };
+async function vLexicon(slug = "anglais", theme) {
+  LX.d = await api(`/api/lexicon/${encodeURIComponent(slug)}`); LX.slug = slug;
+  const t = theme && LX.d.themes.find((x) => x.k === theme);
+  if (t) return `<a class="back" href="#/lexique">${I.back} Tous les thèmes</a>
+    <p class="eyebrow">Lexique · ${esc(t.level)}</p><h1 style="font-size:clamp(28px,4.4vw,40px);margin:8px 0 14px">${esc(t.t)}</h1>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px"><button class="btn btn-primary btn-sm" data-lxall="${esc(t.k)}">${I.spk} Tout écouter</button><button class="btn btn-ghost btn-sm" data-lxhide>Masquer les traductions</button></div>
+    <div class="vocab lexgrid" id="lexgrid">${t.words.map(([en, fr], i) => `<button data-lxsay="${esc(en)}" id="lx-${i}"><span><b data-noi18n>${esc(en)}</b><br><small class="lxfr">${esc(fr)}</small></span>${I.spk}</button>`).join("")}</div>`;
+  return `<a class="back" href="#/cours/${esc(slug)}">${I.back} ${esc(LX.d.course.title)}</a>
+    <p class="eyebrow">Lexique thématique</p><h1 style="font-size:clamp(28px,4.4vw,42px);margin:8px 0">Les mots essentiels, par thème</h1>
+    <p class="muted" style="max-width:60ch">Écoute chaque mot, répète-le à voix haute, puis cache les traductions pour te tester.</p>
+    <div class="lexthemes">${LX.d.themes.map((t) => `<a class="lextheme" href="#/lexique/${esc(t.k)}"><span class="tag">${esc(t.level)}</span><b>${esc(t.t)}</b><small class="muted">${t.words.length} mots et expressions</small></a>`).join("")}</div>`;
+}
+async function lexPlayAll(k) {
+  const t = LX.d.themes.find((x) => x.k === k); const my = ++LX.run;
+  for (let i = 0; i < t.words.length && LX.run === my; i++) {
+    const el = $(`#lx-${i}`); if (!el) return; document.querySelectorAll(".lexgrid button").forEach((b) => b.classList.remove("on")); el.classList.add("on"); el.scrollIntoView({ block: "nearest", behavior: "smooth" });
+    await playSentence({ text: t.words[i][0] }, LX.d.course.lang, 0.9); await sleep(700);
+  }
+}
+LX.run = 0;
 
 /* ================= Test de niveau ================= */
 const LEVELS = ["A1", "A2", "B1", "B2", "C1", "C2"];
@@ -1292,6 +1395,16 @@ document.addEventListener("click", async (e) => {
   if (ds.giftmode !== undefined) { S.gift = ds.giftmode === "1"; if (!S.gift && location.hash.includes("offrir")) { location.hash = "#/abonnements"; return; } return render(); }
   if (ds.giftshare) { window.open(giftShareUrl(ds.giftshare, ds.giftto), "_blank", "noopener"); return; }
   if (ds.giftredeem) { t.disabled = true; try { const r = await api("/api/gifts/redeem", { method: "POST", body: { code: ds.giftredeem } }); S.catalog = null; toast("Cadeau activé ! Bon apprentissage."); location.hash = r.courses[0] ? `#/cours/${r.courses[0].slug}` : "#/parcours"; } catch (err) { toast(err.message, true); t.disabled = false; } return; }
+  if (ds.grlvl) { GR.lvl = ds.grlvl; document.querySelectorAll("[data-grlvl]").forEach((b) => b.setAttribute("aria-pressed", b.dataset.grlvl === GR.lvl)); $("#grlist").innerHTML = grammarList(); return; }
+  if (ds.lxsay) { LX.run++; return playSentence({ text: ds.lxsay }, LX.d.course.lang, 0.9); }
+  if (ds.lxall) return lexPlayAll(ds.lxall);
+  if (ds.lxhide !== undefined) { const g = $("#lexgrid"); const h = g.classList.toggle("hidefr"); t.textContent = h ? "Afficher les traductions" : "Masquer les traductions"; return; }
+  if (ds.exstart !== undefined) return examStart();
+  if (ds.exsay) return playSentence(P.data && P.data.lesson.sentences.find((x) => x.text === ds.exsay) || { text: ds.exsay }, EX.d.course.lang, 0.95);
+  if (ds.expick !== undefined) { EX.answers[EX.i] = +ds.expick; $("#exam").innerHTML = examHTML(); return; }
+  if (ds.exnext !== undefined) { EX.i++; $("#exam").innerHTML = examHTML(); return; }
+  if (ds.exprev !== undefined) { EX.i = Math.max(0, EX.i - 1); $("#exam").innerHTML = examHTML(); return; }
+  if (ds.exsubmit !== undefined) return examSubmit(t);
   if (ds.cmreply) { CM.replyTo = CM.replyTo === +ds.cmreply ? null : +ds.cmreply; paintComments(); const ta = $(`#cmIn-${ds.cmreply}`); if (ta) ta.focus(); return; }
   if (ds.cmdel) { if (!confirm("Supprimer ce message ?")) return; try { await api(`/api/comments/${ds.cmdel}`, { method: "DELETE" }); CM.list = CM.list.filter((c) => c.id !== +ds.cmdel && c.parent_id !== +ds.cmdel); paintComments(); toast("Message supprimé"); } catch (err) { toast(err.message, true); } return; }
   if (ds.cmhide) { try { await api(`/api/comments/${ds.cmhide}/hidden`, { method: "PUT", body: { hidden: ds.val === "1" } }); toast(ds.val === "1" ? "Message masqué" : "Message affiché"); if (ds.admin) render(); else loadComments(CM.lesson); } catch (err) { toast(err.message, true); } return; }
@@ -1343,6 +1456,7 @@ document.addEventListener("click", async (e) => {
   if (ds.verify) { try { const o = await api(`/api/admin/orders/${encodeURIComponent(ds.verify)}/verify`, { method: "POST" }); toast(`Statut : ${o.status}`); render(); } catch (err) { toast(err.message, true); } return; }
 });
 
+document.addEventListener("input", (e) => { if (e.target.id === "grq") { GR.q = e.target.value; $("#grlist").innerHTML = grammarList(); } });
 document.addEventListener("change", async (e) => {
   const t = e.target;
   if (t.dataset.upload) {

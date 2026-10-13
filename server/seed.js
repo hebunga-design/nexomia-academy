@@ -8,7 +8,7 @@ const Q = (say, prompt, options, answer, explanation) => ({ say, prompt, options
 
 const COURSES = [
   { slug: "anglais", code: EN.meta.code, big: "En", domain: "Langues", title: "Anglais", level: EN.meta.level, lang: EN.meta.lang, template: "Langue",
-    description: EN.meta.description, lessons: EN.lessons },
+    description: EN.meta.description, lessons: [] }, // leçons ajoutées par syncCourse
   { slug: "portugais", code: "PT-A1", big: "Pt", domain: "Langues", title: "Portugais", level: "Débutant · A1", lang: "pt-BR", template: "Langue",
     description: "Portugais du Brésil pour communiquer avec l’Angola, le Mozambique et le Brésil : commerce, voyage, travail.",
     lessons: [
@@ -73,7 +73,6 @@ function seedIfEmpty() {
     const id = one("SELECT id FROM courses WHERE slug = ?", c.slug).id;
     for (const l of c.lessons) addLesson(id, l);
   }
-  setSetting(`content:${EN.slug}`, EN.VERSION);
   return true;
 }
 
@@ -87,14 +86,22 @@ function syncCourse(pack) {
   if (!c) return null;
   tx(() => {
     run("UPDATE courses SET code = ?, level = ?, lang = ?, description = ?, updated_at = datetime('now') WHERE id = ?", pack.meta.code, pack.meta.level, pack.meta.lang, pack.meta.description, c.id);
-    const existing = all("SELECT id FROM lessons WHERE course_id = ? ORDER BY position, id", c.id);
+    // Correspondance par clé stable (puis par titre pour les anciennes bases) : chaque leçon garde
+    // son identifiant, donc la progression, les commentaires et les audios restent attachés.
+    const existing = all("SELECT id, title, content_key FROM lessons WHERE course_id = ? ORDER BY position, id", c.id);
+    const byKey = new Map(existing.filter((e) => e.content_key).map((e) => [e.content_key, e]));
+    const byTitle = new Map(existing.filter((e) => !e.content_key).map((e) => [e.title, e]));
+    const used = new Set();
     pack.lessons.forEach((l, i) => {
-      let id = existing[i] && existing[i].id;
-      if (id) run("UPDATE lessons SET position = ?, title = ?, duration_min = ?, goal = ?, module = ?, notes = ? WHERE id = ?", i + 1, l.title, l.duration_min, l.goal, l.module, l.notes, id);
-      else id = Number(run("INSERT INTO lessons(course_id, position, title, duration_min, goal, module, notes) VALUES(?, ?, ?, ?, ?, ?, ?)", c.id, i + 1, l.title, l.duration_min, l.goal, l.module, l.notes).lastInsertRowid);
+      let e = byKey.get(l.key) || byTitle.get(l.title) || (l.formerTitles || []).map((t) => byTitle.get(t)).find(Boolean);
+      if (e && used.has(e.id)) e = null;
+      let id;
+      if (e) { id = e.id; run("UPDATE lessons SET position = ?, title = ?, duration_min = ?, goal = ?, module = ?, notes = ?, content_key = ? WHERE id = ?", i + 1, l.title, l.duration_min, l.goal, l.module, l.notes, l.key, id); }
+      else id = Number(run("INSERT INTO lessons(course_id, position, title, duration_min, goal, module, notes, content_key) VALUES(?, ?, ?, ?, ?, ?, ?, ?)", c.id, i + 1, l.title, l.duration_min, l.goal, l.module, l.notes, l.key).lastInsertRowid);
+      used.add(id);
       writeLessonContent(id, { sentences: l.sentences, vocab: l.vocab, questions: l.questions });
     });
-    for (const extra of existing.slice(pack.lessons.length)) run("DELETE FROM lessons WHERE id = ?", extra.id);
+    for (const extra of existing.filter((e) => !used.has(e.id))) run("DELETE FROM lessons WHERE id = ?", extra.id);
     setSetting(key, pack.VERSION);
   });
   audit(null, "content.sync", { course: pack.slug, version: pack.VERSION, lessons: pack.lessons.length });

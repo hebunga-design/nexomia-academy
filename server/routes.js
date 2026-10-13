@@ -129,7 +129,9 @@ r.get("/api/courses/:slug", (ctx) => {
     return { ...l, locked: !hasAccess(ctx.user, l), completed: !!(p && p.completed_at), score: p ? p.best_score : null };
   });
   const certificates = ctx.user ? all("SELECT code, module FROM certificates WHERE user_id = ? AND course_id = ?", ctx.user.id, c.id) : [];
-  ok(ctx, { course: { ...c, created_by: undefined, reviewed_by: undefined, subscribed_until: ctx.user ? B.activeEnd(ctx.user.id, c.id) : null }, lessons, certificates, placement_test: !!PLACEMENT[c.slug] });
+  const modules = {};
+  if (ctx.user) for (const m of [...new Set(lessons.map((l) => l.module).filter(Boolean))]) modules[m] = L.moduleStatus(ctx.user.id, c.id, m);
+  ok(ctx, { course: { ...c, created_by: undefined, reviewed_by: undefined, subscribed_until: ctx.user ? B.activeEnd(ctx.user.id, c.id) : null }, lessons, certificates, modules, placement_test: !!PLACEMENT[c.slug] });
 });
 r.get("/api/lessons/:id", (ctx) => {
   const l = one("SELECT * FROM lessons WHERE id = ?", Number(ctx.params.id));
@@ -176,7 +178,9 @@ r.post("/api/progress", async (ctx) => {
     if (passed) cert = L.maybeCertificate(ctx.user, l);
     if (cert && ctx.user.email_progress) Mail.sendCertificate(ctx.user, cert, one("SELECT title FROM courses WHERE id = ?", l.course_id).title).catch(() => {});
   }
-  ok(ctx, { passed, threshold: 80, xp, certificate: cert, today: L.xpOn(ctx.user.id, L.today()), goal: ctx.user.daily_goal });
+  const ms = l.module ? L.moduleStatus(ctx.user.id, l.course_id, l.module) : null;
+  const examReady = !!ms && ms.total >= 3 && ms.done === ms.total && !ms.examPassed;
+  ok(ctx, { passed, threshold: 80, xp, certificate: cert, examReady, module: l.module, today: L.xpOn(ctx.user.id, L.today()), goal: ctx.user.daily_goal });
 });
 r.post("/api/listening", async (ctx) => {
   A.requireUser(ctx);
@@ -373,6 +377,61 @@ r.post("/api/gifts/redeem", async (ctx) => {
 r.get("/api/me/gifts", (ctx) => {
   A.requireUser(ctx);
   ok(ctx, { gifts: all("SELECT * FROM gift_codes WHERE buyer_id = ? ORDER BY created_at DESC LIMIT 30", ctx.user.id).map(giftView) });
+});
+
+// ---------- Grammaire et lexique (consultables librement) ----------
+const REF = { anglais: { grammar: require("./courses/anglais/grammar"), lexicon: require("./courses/anglais/lexicon") } };
+r.get("/api/grammar/:slug", (ctx) => {
+  const ref = REF[ctx.params.slug]; const c = one("SELECT id, title, lang FROM courses WHERE slug = ?", ctx.params.slug);
+  if (!ref || !c) throw new HttpError(404, "Pas de fiches pour ce cours.");
+  const lessons = all("SELECT id, title, module, notes FROM lessons WHERE course_id = ? AND notes <> '' ORDER BY position", c.id);
+  ok(ctx, { course: c, sheets: ref.grammar, lessons });
+});
+r.get("/api/lexicon/:slug", (ctx) => {
+  const ref = REF[ctx.params.slug]; const c = one("SELECT id, title, lang FROM courses WHERE slug = ?", ctx.params.slug);
+  if (!ref || !c) throw new HttpError(404, "Pas de lexique pour ce cours.");
+  ok(ctx, { course: c, themes: ref.lexicon });
+});
+
+// ---------- Examen de fin de niveau ----------
+function examModule(courseId, level) {
+  return all("SELECT DISTINCT module FROM lessons WHERE course_id = ? AND module <> ''", courseId).map((m) => m.module).find((m) => m.split("·")[0].trim().toLowerCase() === String(level).toLowerCase());
+}
+r.get("/api/exam/:slug/:level", (ctx) => {
+  A.requireUser(ctx);
+  const c = one("SELECT id, slug, title, lang FROM courses WHERE slug = ?", ctx.params.slug);
+  if (!c) throw new HttpError(404, "Cours introuvable.");
+  const module = examModule(c.id, ctx.params.level);
+  if (!module) throw new HttpError(404, "Niveau introuvable.");
+  const st = L.moduleStatus(ctx.user.id, c.id, module);
+  if (st.done < st.total && !isStaff(ctx.user)) throw new HttpError(403, `Termine d’abord toutes les leçons du niveau (${st.done}/${st.total}).`);
+  if (one("SELECT COUNT(*) AS n FROM exams WHERE user_id = ? AND course_id = ? AND module = ? AND created_at >= datetime('now','-1 day')", ctx.user.id, c.id, module).n >= 6)
+    throw new HttpError(429, "Tu as déjà fait 6 essais aujourd’hui. Révise les leçons et reviens demain.");
+  const items = L.buildExam(c.id, module);
+  if (items.length < 6) throw new HttpError(400, "Pas encore assez de contenu pour l’examen de ce niveau.");
+  const id = Number(run("INSERT INTO exams(user_id, course_id, module, items) VALUES(?, ?, ?, ?)", ctx.user.id, c.id, module, JSON.stringify(items)).lastInsertRowid);
+  ok(ctx, { id, course: c, module, pass: L.EXAM_PASS, status: st,
+    items: items.map((q) => ({ type: q.type, say: q.say, prompt: q.prompt, shown: q.shown, tr: q.tr, options: q.options })) });
+});
+r.post("/api/exam/:id/submit", async (ctx) => {
+  A.requireUser(ctx);
+  const e = one("SELECT * FROM exams WHERE id = ? AND user_id = ?", Number(ctx.params.id), ctx.user.id);
+  if (!e) throw new HttpError(404, "Examen introuvable.");
+  if (e.submitted_at) throw new HttpError(409, "Cet examen a déjà été corrigé. Lance un nouvel essai.");
+  const b = await readJson(ctx.req);
+  const items = JSON.parse(e.items), answers = Array.isArray(b.answers) ? b.answers : [];
+  const results = items.map((q, i) => ({ correct: Number(answers[i]) === q.answer, answer: q.answer, explanation: q.explanation }));
+  const score = Math.round((results.filter((r0) => r0.correct).length / items.length) * 100);
+  const passed = score >= L.EXAM_PASS;
+  run("UPDATE exams SET submitted_at = datetime('now'), score = ?, passed = ? WHERE id = ?", score, passed ? 1 : 0, e.id);
+  let cert = null, xp = 0;
+  if (passed) {
+    xp = L.award(ctx.user.id, "exam", `${e.course_id}:${e.module}`, 50);
+    cert = L.maybeCertificate(ctx.user, { module: e.module, course_id: e.course_id });
+    if (cert && ctx.user.email_progress) Mail.sendCertificate(ctx.user, cert, one("SELECT title FROM courses WHERE id = ?", e.course_id).title).catch(() => {});
+  }
+  audit(ctx.user.id, "exam.submit", { module: e.module, score, passed });
+  ok(ctx, { score, passed, pass: L.EXAM_PASS, results, certificate: cert, xp });
 });
 
 // ---------- Test de niveau ----------
