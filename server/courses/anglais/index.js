@@ -55,11 +55,11 @@ const lessons = LEVELS.flatMap(([module, base, more]) => merge(module, base, mor
 })));
 
 module.exports = {
-  VERSION: 4,
+  VERSION: 5,
   slug: "anglais",
   meta: {
     code: "EN", level: "Tous niveaux · A1 à C2", lang: "en-GB",
-    description: "Le parcours complet, du tout premier « Hello » jusqu’au discours en public : 86 leçons audio et histoires, de débutant (A1) à maîtrise (C2), avec grammaire expliquée en français, vocabulaire et exercices d’écoute.",
+    description: "Le parcours complet, du tout premier « Hello » jusqu’au discours en public : 96 leçons audio et histoires, de débutant (A1) à maîtrise (C2), plus un module d’anglais professionnel (mines, douane, santé, banque…), avec grammaire expliquée en français, vocabulaire et exercices d’écoute.",
   },
   lessons,
 };

@@ -264,7 +264,7 @@ async function vHome() {
       <div class="row"><button class="play" id="heroPlay" aria-label="Écouter">${I.play}</button><div class="wave" aria-hidden="true">${wave(34)}</div></div>
       <div class="langs" role="group" aria-label="Langue"><button class="chip" data-hl="en" aria-pressed="${heroLang === "en"}">Anglais</button><button class="chip" data-hl="pt" aria-pressed="${heroLang === "pt"}">Portugais</button></div>
     </div></section>
-  <div class="trust" aria-label="En bref"><span><b>44</b> leçons d’anglais</span><span><b>A1 → C2</b> tous les niveaux</span><span><b>1re leçon</b> gratuite</span><span><b>Certificat</b> à chaque niveau</span></div>
+  <div class="trust" aria-label="En bref"><span><b>96</b> leçons d’anglais</span><span><b>A1 → C2 + Pro</b> tous les niveaux</span><span><b>1re leçon</b> gratuite</span><span><b>Certificat</b> à chaque niveau</span></div>
   <section class="sec"><div class="sec-h"><div><p class="eyebrow">Ce que tu obtiens</p><h2>Une méthode complète, pensée pour ton téléphone</h2></div></div>
     <div class="features">
       ${[["ear", "Écoute de vraies conversations", "Des dialogues de la vie réelle, phrase par phrase, à la vitesse que tu veux, même écran verrouillé."],
