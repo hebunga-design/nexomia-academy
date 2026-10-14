@@ -1,0 +1,9 @@
+{
+  "name": "nexomia-site",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Site vitrine NEXOMIA SARL (nexomia360.com)",
+  "main": "server.js",
+  "scripts": { "start": "node server.js" },
+  "engines": { "node": ">=20" }
+}
