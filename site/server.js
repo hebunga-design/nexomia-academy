@@ -52,11 +52,12 @@ async function contact(req, res) {
   } catch (e) { console.error("brevo", e.message); return json(res, 502, { error: "L'envoi a échoué. Écrivez-nous directement à " + CONTACT_TO + "." }); }
 }
 
-http.createServer(async (req, res) => {
+async function handle(req, res) {
   const url = new URL(req.url, "http://x");
-  // Adresse unique : on redirige www vers le domaine principal.
-  const host = String(req.headers.host || "");
-  if (host.startsWith("www.")) { res.writeHead(301, { Location: "https://" + host.slice(4) + req.url }); return res.end(); }
+  // Adresse unique : si SITE_CANONICAL est défini (ex. www.nexomia360.com), les autres noms y sont redirigés.
+  const host = String(req.headers["x-forwarded-host"] || req.headers.host || "").split(":")[0].toLowerCase();
+  const canon = (process.env.SITE_CANONICAL || "").toLowerCase();
+  if (canon && host !== canon && !host.startsWith("localhost")) { res.writeHead(301, { Location: "https://" + canon + req.url }); return res.end(); }
   if (url.pathname === "/api/contact" && req.method === "POST") return contact(req, res);
   if (url.pathname === "/health") return json(res, 200, { ok: true });
   let p = decodeURIComponent(url.pathname);
@@ -71,4 +72,11 @@ http.createServer(async (req, res) => {
     res.writeHead(200, { "Content-Type": TYPES[ext] || "application/octet-stream", "Cache-Control": ext === ".html" ? "no-cache" : "public, max-age=86400", ...SEC });
     res.end(data);
   });
-}).listen(PORT, () => console.log(`Site NEXOMIA en ligne sur le port ${PORT} · e-mails : ${process.env.BREVO_API_KEY ? "brevo" : "non configurés"}`));
+}
+
+module.exports = { handle };
+// Lancé seul (node site/server.js) : serveur autonome. Sinon, le serveur de l'Academy appelle handle()
+// pour les requêtes adressées à nexomia360.com.
+if (require.main === module) {
+  http.createServer(handle).listen(PORT, () => console.log(`Site NEXOMIA en ligne sur le port ${PORT} · e-mails : ${process.env.BREVO_API_KEY ? "brevo" : "non configurés"}`));
+}

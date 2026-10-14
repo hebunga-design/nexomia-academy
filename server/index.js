@@ -53,8 +53,14 @@ function serveStatic(req, res, file) {
   return serveFile(req, res, file, { cache: "public, max-age=86400" });
 }
 
+// Le site vitrine NEXOMIA (dossier site/) est servi par ce même service pour nexomia360.com et www.
+const site = require("../site/server");
+const SITE_HOSTS = (process.env.SITE_HOSTS || "nexomia360.com,www.nexomia360.com").split(",").map((h) => h.trim().toLowerCase()).filter(Boolean);
+
 const server = http.createServer(async (req, res) => {
   for (const [k, v] of Object.entries(SECURITY_HEADERS)) res.setHeader(k, v);
+  const host = String(req.headers["x-forwarded-host"] || req.headers.host || "").split(":")[0].toLowerCase();
+  if (SITE_HOSTS.includes(host)) return site.handle(req, res);
   const url = new URL(req.url, "http://x");
   const pathname = decodeURIComponent(url.pathname);
   const proto = (req.headers["x-forwarded-proto"] || "").split(",")[0].trim();
