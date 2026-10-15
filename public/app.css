@@ -690,3 +690,6 @@ footer a{color:var(--muted);font-weight:700}
 .refitem summary b{min-width:0;overflow-wrap:anywhere}
 .tblwrap{max-width:100%;-webkit-overflow-scrolling:touch}
 .gt td,.gt th{white-space:nowrap}
+
+/* Application Android : pas de prix ni d'achat (règle de paiement Google Play) */
+html[data-app] a[href^="#/abonnements"], html[data-app] a[href^="#/cadeau"], html[data-app] [data-subscribe], html[data-app] .pricetag, html[data-app] .price, html[data-app] .app-hide{display:none!important}

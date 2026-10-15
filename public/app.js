@@ -56,6 +56,11 @@ const can = (role) => S.me && RANK[S.me.role] >= RANK[role];
 
 /* ================= État ================= */
 const S = { lang: store.get("uilang", "fr"), me: null, payments: "test", methods: ["mpesa", "airtel", "orange", "card"], catalog: null, pricing: null, filter: "Tous", cart: store.get("cart", []), payMethod: "mpesa" };
+// Application Android (Play Store) : l'application est lancée avec ?app=android. Google Play impose son propre
+// système de paiement pour les achats dans l'application : dans ce mode, on n'affiche ni prix ni achat.
+// Les abonnements se prennent sur le site web et s'appliquent automatiquement au compte.
+const APP = (() => { let a = null; try { a = new URLSearchParams(location.search).get("app") || sessionStorage.getItem("nx-app") || (document.referrer.startsWith("android-app://") ? "android" : null); if (a) sessionStorage.setItem("nx-app", a); } catch {} return a === "android" ? "android" : null; })();
+if (APP) document.documentElement.dataset.app = APP;
 const priceFor = (n, p = S.pricing) => { if (!p || n <= 0) return 0; const t = p.tiers; return n <= t.length ? t[n - 1] : t[t.length - 1] + (n - t.length) * p.extra; };
 
 /* ================= Voix (synthèse de l'appareil, en secours) ================= */
@@ -163,7 +168,7 @@ function paintPlayer() {
 function tabs() {
   const t = [["#/", "Accueil", "home"], ["#/cours", "Cours", "cat"]];
   if (S.me) t.push(["#/parcours", "Mon parcours", "me"]);
-  t.push(["#/abonnements", "Abonnements", "pass"]);
+  if (!APP) t.push(["#/abonnements", "Abonnements", "pass"]);
   if (can("creator")) t.push(["#/studio", "Studio", "studio"]);
   if (can("admin")) t.push(["#/admin", "Admin", "admin"]);
   return t;
@@ -184,7 +189,7 @@ const routes = [
   [/^#\/parcours$/, vDash, "auth"], [/^#\/abonnements$/, vSubs], [/^#\/connexion$/, vLogin], [/^#\/inscription$/, vRegister],
   [/^#\/reinitialiser\/([\w-]+)$/, vReset], [/^#\/recuperation$/, vRecover], [/^#\/studio$/, vStudio, "creator"], [/^#\/studio\/(\d+)$/, vStudioCourse, "creator"],
   [/^#\/admin$/, vAdmin, "admin"],
-  [/^#\/test-niveau\/([\w-]+)$/, vPlacement], [/^#\/bienvenue$/, vWelcome, "auth"], [/^#\/certificat\/([\w-]+)$/, vCertificate], [/^#\/revision$/, vReview, "auth"], [/^#\/suggestions$/, vSuggestions], [/^#\/grammaire$/, () => vGrammar("anglais")], [/^#\/lexique(?:\/([\w-]+))?$/, (k) => vLexicon("anglais", k)], [/^#\/examen\/([\w-]+)\/(\w+)$/, vExam, "auth"], [/^#\/cadeau(?:\/([\w-]+))?$/, vGift], [/^#\/mot-de-passe-oublie$/, vForgot],
+  [/^#\/test-niveau\/([\w-]+)$/, vPlacement], [/^#\/bienvenue$/, vWelcome, "auth"], [/^#\/certificat\/([\w-]+)$/, vCertificate], [/^#\/revision$/, vReview, "auth"], [/^#\/suggestions$/, vSuggestions], [/^#\/grammaire$/, () => vGrammar("anglais")], [/^#\/lexique(?:\/([\w-]+))?$/, (k) => vLexicon("anglais", k)], [/^#\/examen\/([\w-]+)\/(\w+)$/, vExam, "auth"], [/^#\/cadeau(?:\/([\w-]+))?$/, vGift], [/^#\/mot-de-passe-oublie$/, vForgot], [/^#\/supprimer-compte$/, vDeleteAccount],
 ];
 function parseHash() { const h = location.hash || "#/"; const [p, q] = h.split("?"); return { path: p, query: new URLSearchParams(q || "") }; }
 let renderId = 0;
@@ -195,6 +200,7 @@ async function render() {
   if (path !== "#/abonnements") S.gift = false;
   paintNav(); paintPlayer();
   const app = $("#app");
+  if (APP && (path === "#/abonnements" || path.startsWith("#/cadeau"))) { location.hash = "#/cours"; return; }
   const r = routes.find(([re]) => re.test(path));
   if (!r) { app.innerHTML = `<div class="empty"><h2>Page introuvable</h2><p style="margin-top:8px"><a href="#/">Retour à l’accueil</a></p></div>`; return; }
   if (r[2] && !S.me) { location.hash = `#/connexion?next=${encodeURIComponent(path)}`; return; }
@@ -216,7 +222,7 @@ async function render() {
     app.innerHTML = `<div class="empty"><p><b>${esc(e.message)}</b></p><p style="margin-top:12px"><button class="btn btn-ghost btn-sm" data-reload>Réessayer</button></p></div>`;
   }
 }
-const footer = () => `<footer><div class="wrap" style="padding:0"><span><b style="color:var(--ink)">NEXOMIA</b> · Former · Créer · Transformer · Lubumbashi, RDC</span><span style="display:flex;gap:16px;flex-wrap:wrap"><a href="#/abonnements?offrir=1">Offrir un abonnement</a><a href="#/cadeau">J’ai un code cadeau</a><a href="#/suggestions">Boîte à suggestions</a></span><span>Paiements : M-Pesa · Airtel Money · Orange Money${S.methods.includes("card") ? " · Carte" : ""}</span></div></footer>`;
+const footer = () => `<footer><div class="wrap" style="padding:0"><span><b style="color:var(--ink)">NEXOMIA</b> · Former · Créer · Transformer · Lubumbashi, RDC</span><span style="display:flex;gap:16px;flex-wrap:wrap"><a href="#/abonnements?offrir=1">Offrir un abonnement</a><a href="#/cadeau">J’ai un code cadeau</a><a href="#/suggestions">Boîte à suggestions</a></span><span class="app-hide">Paiements : M-Pesa · Airtel Money · Orange Money${S.methods.includes("card") ? " · Carte" : ""}</span></div></footer>`;
 
 async function loadCatalog(force) { if (!S.catalog || force) { const d = await api("/api/catalog"); S.catalog = d.courses; S.pricing = d.pricing; } return S.catalog; }
 
@@ -380,6 +386,15 @@ async function vLesson(id) {
   let d;
   try { d = await api(`/api/lessons/${id}`); }
   catch (e) {
+    if (e.status === 402 && APP) {
+      stopPlay(); const x = e.data;
+      return `<a class="back" href="#/cours/${esc(x.course.slug)}">${I.back} ${esc(x.course.title)}</a>
+      <div class="lesson-head"><p class="eyebrow">${esc(x.course.code)} · Leçon ${x.position} sur ${x.lessons.length}</p><h1>${esc(x.lesson.title)}</h1></div>
+      <div class="lock" style="max-width:620px">${motif()}
+        <h2 style="font-size:28px">Cette leçon fait partie de l’abonnement</h2>
+        <p class="muted" style="margin:10px auto 0;max-width:44ch">La première leçon de chaque cours est gratuite. Si ton compte NEXOMIA Academy a un abonnement actif, toutes les leçons s’ouvrent ici automatiquement.</p>
+        ${S.me ? `<p class="muted" style="margin-top:14px;font-size:14px">Connecté en tant que ${esc(S.me.email)}.</p>` : `<a class="btn btn-primary" style="margin-top:16px" href="#/connexion?next=${encodeURIComponent("#/lecon/" + id)}">Me connecter</a>`}</div>`;
+    }
     if (e.status === 402) {
       stopPlay(); const x = e.data;
       return `<a class="back" href="#/cours/${esc(x.course.slug)}">${I.back} ${esc(x.course.title)}</a>
@@ -690,6 +705,20 @@ function giftShareUrl(code, to) {
   const t = `${to ? to + ", j" : "J"}e t’offre un mois de cours sur NEXOMIA Academy 🎁\n\n1. Ouvre ce lien : ${giftLink(code)}\n2. Crée ton compte gratuit\n3. Active ton cadeau (code ${code})\n\nBon apprentissage !`;
   return "https://wa.me/?text=" + encodeURIComponent(t);
 }
+async function vDeleteAccount() {
+  const head = `<div class="auth-wrap" style="max-width:620px;margin:0 auto"><h1 style="font-size:clamp(30px,4vw,42px)">Supprimer mon compte</h1>
+    <p class="muted" style="margin-top:10px">La suppression est définitive. Elle efface ton nom, ton adresse e-mail, ton téléphone, ta progression, tes points, tes certificats, tes commentaires et tes avis. Les paiements déjà faits restent enregistrés sans tes coordonnées, pour la comptabilité de NEXOMIA SARL. Un abonnement en cours n’est pas remboursé.</p>`;
+  if (!S.me) return head + `<p style="margin-top:16px">Connecte-toi pour supprimer ton compte toi-même, ou écris à <b>headoffice@nexomia360.com</b> depuis l’adresse de ton compte : nous le supprimons sous 7 jours.</p>
+    <a class="btn btn-primary" style="margin-top:16px" href="#/connexion?next=${encodeURIComponent("#/supprimer-compte")}">Me connecter</a></div>`;
+  return head + `<form id="deleteForm" class="card" style="margin-top:20px;display:grid;gap:14px">
+      <p>Compte : <b>${esc(S.me.email)}</b></p>
+      <div class="field"><label for="del-pw">Mot de passe, pour confirmer</label><input id="del-pw" type="password" autocomplete="current-password" required></div>
+      <label style="display:flex;gap:10px;align-items:flex-start"><input id="del-ok" type="checkbox" required style="margin-top:4px"><span>Je comprends que mon compte et ma progression seront supprimés définitivement.</span></label>
+      <p id="formErr" class="err" role="alert"></p>
+      <button class="btn btn-primary" style="background:var(--bad);border-color:var(--bad)">Supprimer définitivement mon compte</button>
+    </form></div>`;
+}
+
 async function vGift(code) {
   if (!code) return `<div class="auth"><p class="eyebrow">Abonnement offert</p><h1>Active ton cadeau</h1><p class="muted">Saisis le code reçu (par exemple NX-CADEAU-AB12-CD34).</p>
     <form class="card" id="giftLookup"><div class="field"><label for="gc-in">Code cadeau</label><input id="gc-in" required autocapitalize="characters" autocomplete="off" placeholder="NX-CADEAU-…" style="text-transform:uppercase;font-family:var(--f-mono)"></div>
@@ -1008,6 +1037,9 @@ async function vDash() {
     <div class="card"><h3 style="font-size:20px">Mes e-mails</h3>
       <label class="switch"><input type="checkbox" data-emailprog ${S.me.email_progress ? "checked" : ""}><span class="sw" aria-hidden="true"></span><span>Recevoir mon bilan de progression chaque lundi</span></label>
       <p class="muted" style="font-size:13px;margin-top:8px">Envoyé à ${esc(S.me.email)}. Les e-mails importants (certificat, mot de passe) restent envoyés.</p></div>
+    <div class="card"><h3 style="font-size:20px">Mon compte</h3>
+      <p class="muted" style="font-size:15px;margin-top:6px">Tes données servent uniquement à suivre ta progression. <a href="/confidentialite.html">Politique de confidentialité</a></p>
+      <a class="btn btn-ghost btn-sm" style="margin-top:12px" href="#/supprimer-compte">Supprimer mon compte</a></div>
   </div></div>`;
 }
 
@@ -1486,6 +1518,7 @@ document.addEventListener("submit", async (e) => {
   const err = (m) => { const el = f.querySelector("#formErr") || $("#formErr"); if (el) el.textContent = m; else toast(m, true); };
   const btn = f.querySelector("button:not([type=button])"); if (btn) btn.disabled = true;
   try {
+    if (f.id === "deleteForm") { if (!$("#del-ok").checked) throw new Error("Coche la case pour confirmer."); await api("/api/me/delete", { method: "POST", body: { password: $("#del-pw").value } }); S.me = null; S.catalog = null; toast("Ton compte a été supprimé"); location.hash = "#/"; return; }
     if (f.id === "loginForm") { const r = await api("/api/auth/login", { method: "POST", body: { email: $("#l-email").value, password: $("#l-pw").value } }); S.me = r.user; S.catalog = null; await sendPendingPlacement(); location.hash = f.dataset.next; }
     else if (f.id === "registerForm") { const r = await api("/api/auth/register", { method: "POST", body: { name: $("#r-name").value, email: $("#r-email").value, phone: $("#r-phone").value, password: $("#r-pw").value } }); S.me = r.user; S.catalog = null; await sendPendingPlacement(); toast("Bienvenue dans NEXOMIA Academy"); location.hash = f.dataset.next || "#/bienvenue"; }
     else if (f.id === "recoverForm") { await api("/api/auth/admin-recover", { method: "POST", body: { email: $("#rc-email").value, code: $("#rc-code").value, password: $("#rc-pw").value } }); await boot(true); toast("Mot de passe enregistré. Pense à supprimer ADMIN_RECOVERY_CODE dans Railway."); location.hash = "#/admin"; }

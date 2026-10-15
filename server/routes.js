@@ -228,6 +228,41 @@ r.put("/api/me/profile", async (ctx) => {
   ok(ctx, { ok: true, daily_goal: goal, motive, ui_lang: lang, email_progress: !!ep });
 });
 
+// Lien entre l'application Android (Trusted Web Activity) et le site : Android vérifie ce fichier
+// pour afficher l'Academy en plein écran, sans barre d'adresse. Empreinte fournie par la Play Console.
+r.get("/.well-known/assetlinks.json", (ctx) => {
+  const pkg = process.env.ANDROID_PACKAGE || "com.nexomia360.academy";
+  const prints = String(process.env.ANDROID_SHA256 || "").split(",").map((x) => x.trim().toUpperCase()).filter(Boolean);
+  ok(ctx, prints.length ? [{ relation: ["delegate_permission/common.handle_all_urls"], target: { namespace: "android_app", package_name: pkg, sha256_cert_fingerprints: prints } }] : []);
+});
+
+// Suppression du compte (exigence Google Play) : l'apprenant confirme avec son mot de passe.
+// Les données d'apprentissage sont effacées ; les paiements restent (comptabilité) mais sans coordonnées.
+r.post("/api/me/delete", async (ctx) => {
+  A.requireUser(ctx);
+  const b = await readJson(ctx.req);
+  const u = one("SELECT * FROM users WHERE id = ?", ctx.user.id);
+  if (!A.verifyPassword(String(b.password || ""), u.pass_hash)) throw new HttpError(401, "Mot de passe incorrect.");
+  if (u.role === "admin" && (one("SELECT COUNT(*) AS n FROM users WHERE role = 'admin' AND suspended = 0") || {}).n <= 1) throw new HttpError(400, "Tu es le seul administrateur : nomme un autre administrateur avant de supprimer ce compte.");
+  tx(() => {
+    for (const { name } of all("SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'")) {
+      if (name === "users") continue;
+      for (const fk of all(`PRAGMA foreign_key_list("${name}")`)) {
+        if (fk.table !== "users") continue;
+        if (fk.on_delete === "CASCADE") run(`DELETE FROM "${name}" WHERE "${fk.from}" = ?`, u.id);
+        else if (fk.on_delete === "SET NULL") run(`UPDATE "${name}" SET "${fk.from}" = NULL WHERE "${fk.from}" = ?`, u.id);
+      }
+    }
+    run("DELETE FROM sessions WHERE user_id = ?", u.id);
+    run("UPDATE orders SET phone = NULL, gift_to = '', gift_msg = '' WHERE user_id = ?", u.id);
+    run("UPDATE users SET name = 'Compte supprimé', email = ?, phone = NULL, pass_hash = ?, suspended = 1, email_progress = 0, placement = '{}', motive = '' WHERE id = ?",
+      `supprime-${u.id}-${crypto.randomBytes(4).toString("hex")}@invalid`, crypto.randomBytes(32).toString("hex"), u.id);
+  });
+  audit(null, "user.deleted", { id: u.id });
+  A.destroySession(ctx.req, ctx.res, ctx.secure);
+  ok(ctx, { ok: true });
+});
+
 // Prononciation : quelques points par leçon et par jour quand l'apprenant s'entraîne au micro.
 r.post("/api/me/speak", async (ctx) => {
   A.requireUser(ctx);
