@@ -1493,7 +1493,23 @@ document.addEventListener("click", async (e) => {
   if (ds.tts) { t.disabled = true; try { await api("/api/admin/tts", { method: "POST", body: { courseId: +ds.tts } }); toast("Génération des voix lancée"); render(); } catch (err) { toast(err.message, true); t.disabled = false; } return; }
   if (ds.ttsstop !== undefined) { await api("/api/admin/tts", { method: "POST", body: { stop: true } }).catch(() => {}); toast("Arrêt demandé"); render(); return; }
   if (ds.atab) { adminTab = ds.atab; return render(); }
-  if (ds.resetlink) { try { const r = await api(`/api/admin/users/${ds.resetlink}/reset-link`, { method: "POST" }); $("#resetOut").innerHTML = `<div class="card" style="margin-top:14px"><b>Lien à transmettre à la personne (valable 48 h) :</b><p style="margin-top:8px;word-break:break-all;font-family:var(--f-mono);font-size:13px;user-select:all">${esc(r.url)}</p><button class="btn btn-ghost btn-sm" style="margin-top:10px" data-copy="${esc(r.url)}">Copier</button></div>`; } catch (err) { toast(err.message, true); } return; }
+  if (ds.resetlink) {
+    // Le lien s'ouvre dans une fenêtre au milieu de l'écran (avant, il s'affichait tout en bas du tableau, hors de vue).
+    t.disabled = true;
+    try {
+      const r = await api(`/api/admin/users/${ds.resetlink}/reset-link`, { method: "POST" });
+      const row = t.closest("tr"), who = row && row.querySelector("td") ? row.querySelector("td").innerText.split("\n")[0].trim() : "";
+      const msg = "Voici ton lien pour choisir un nouveau mot de passe NEXOMIA Academy (valable 48 h) : " + r.url;
+      $("#layer").innerHTML = `<div class="overlay" id="ov"><div class="celebrate paymodal" role="dialog" aria-modal="true" aria-labelledby="rl-h" style="text-align:left">
+        <h2 id="rl-h" style="font-size:24px">Lien mot de passe${who ? ` pour ${esc(who)}` : ""}</h2>
+        <p class="muted" style="margin-top:6px">Valable 48 heures. La personne ouvre le lien et choisit elle-même son nouveau mot de passe.</p>
+        <p style="margin-top:12px;word-break:break-all;font-family:var(--f-mono);font-size:13px;user-select:all;background:var(--surface-2);padding:10px;border-radius:10px">${esc(r.url)}</p>
+        <p class="muted" style="font-size:13px;margin-top:10px">Envoie-le seulement à la personne titulaire du compte.</p>
+        <div class="pm-actions"><a class="btn btn-primary" target="_blank" rel="noopener" href="https://wa.me/?text=${encodeURIComponent(msg)}">Envoyer par WhatsApp</a><button class="btn btn-ghost" data-copy="${esc(r.url)}">Copier le lien</button><button class="btn btn-ghost" data-close>Fermer</button></div>
+      </div></div>`;
+    } catch (err) { toast(err.message, true); }
+    t.disabled = false; return;
+  }
   if (ds.copy) { try { await navigator.clipboard.writeText(ds.copy); toast("Lien copié"); } catch { toast("Sélectionne le lien pour le copier"); } return; }
   if (ds.suspend) { try { await api(`/api/admin/users/${ds.suspend}`, { method: "PUT", body: { suspended: ds.val === "1" } }); toast(ds.val === "1" ? "Compte suspendu" : "Compte réactivé"); render(); } catch (err) { toast(err.message, true); } return; }
   if (ds.verify) { try { const o = await api(`/api/admin/orders/${encodeURIComponent(ds.verify)}/verify`, { method: "POST" }); toast(`Statut : ${o.status}`); render(); } catch (err) { toast(err.message, true); } return; }
