@@ -767,6 +767,18 @@ r.post("/api/admin/users/:id/reset-link", (ctx) => {
   audit(ctx.user.id, "reset_link_created", { id: u.id });
   ok(ctx, { url: `${ctx.baseUrl}/#/reinitialiser/${token}`, expires_hours: 48 });
 });
+// L'administrateur envoie le lien de réinitialisation directement à l'adresse e-mail du compte.
+r.post("/api/admin/users/:id/reset-email", async (ctx) => {
+  admin(ctx);
+  const u = one("SELECT id, name, email, suspended FROM users WHERE id = ?", Number(ctx.params.id));
+  if (!u) throw new HttpError(404, "Utilisateur introuvable.");
+  if (u.suspended) throw new HttpError(400, "Ce compte est suspendu ou supprimé : réactive-le d'abord.");
+  const token = A.createResetToken(u.id);
+  const res = await Mail.sendReset(u, token, { byAdmin: true });
+  if (!res.sent) throw new HttpError(502, res.reason === "not_configured" ? "L'envoi d'e-mails n'est pas configuré." : "L'e-mail n'a pas pu partir. Utilise plutôt le lien à copier.");
+  audit(ctx.user.id, "reset_email_sent", { id: u.id });
+  ok(ctx, { ok: true, to: u.email });
+});
 // Bourse NEXOMIA : accès offert d'un mois à un cours, tracé dans le journal.
 r.post("/api/admin/users/:id/grant", async (ctx) => {
   admin(ctx);

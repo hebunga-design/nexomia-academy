@@ -97,10 +97,11 @@ async function sendCertificate(user, cert, courseTitle) {
     cta: "Voir mon certificat", ctaUrl: url });
   return send({ to: user.email, name: user.name, subject: `Ton certificat ${cert.module.split("·")[0].trim()} est prêt`, html, text: `Félicitations ! Ton certificat ${cert.module} est prêt : ${url}`, userId: user.id });
 }
-async function sendReset(user, token) {
+async function sendReset(user, token, { byAdmin = false } = {}) {
   const url = `${baseUrl()}/#/reinitialiser/${token}`;
+  const intro = byAdmin ? `Bonjour ${esc(first(user.name))}, à ta demande, l'équipe NEXOMIA t'envoie un lien pour choisir un nouveau mot de passe NEXOMIA Academy.` : `Bonjour ${esc(first(user.name))}, tu as demandé à changer ton mot de passe NEXOMIA Academy.`;
   const html = layout({ preheader: "Lien valable 48 heures.", title: "Choisis un nouveau mot de passe", userId: null,
-    body: p(`Bonjour ${esc(first(user.name))}, tu as demandé à changer ton mot de passe NEXOMIA Academy.`) + p("Le lien ci-dessous est valable 48 heures et ne fonctionne qu'une seule fois.")
+    body: p(intro) + p("Le lien ci-dessous est valable 48 heures et ne fonctionne qu'une seule fois.")
       + p(`<span style="color:#56646E;font-size:14px">Si ce n'est pas toi, ignore cet e-mail : ton mot de passe actuel reste valable. L'équipe NEXOMIA ne te demandera jamais ton mot de passe ni ton code Mobile Money.</span>`),
     cta: "Choisir mon nouveau mot de passe", ctaUrl: url });
   return send({ to: user.email, name: user.name, subject: "Ton nouveau mot de passe NEXOMIA Academy", html, text: `Choisis ton nouveau mot de passe (lien valable 48 h) : ${url}` });

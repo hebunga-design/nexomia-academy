@@ -1343,7 +1343,7 @@ async function vAdmin() {
     <div class="table-wrap"><table class="t"><thead><tr><th>Nom</th><th>Contact</th><th>Rôle</th><th>Abonnements</th><th>Actions</th></tr></thead><tbody>
     ${users.map((u) => `<tr><td><b>${esc(u.name)}</b><br><small class="muted">Inscrit le ${fmtD(u.created_at)}</small>${u.suspended ? `<br><span class="status st-review">Suspendu</span>` : ""}</td><td>${esc(u.email)}<br><small class="muted">${esc(u.phone || "")}</small></td>
       <td><select data-role="${u.id}" aria-label="Rôle de ${esc(u.name)}">${roles.map((r) => `<option value="${r}" ${r === u.role ? "selected" : ""}>${ROLE_FR[r]}</option>`).join("")}</select></td><td class="num">${u.subs}</td>
-      <td style="display:flex;gap:6px;flex-wrap:wrap"><button class="btn btn-ghost btn-sm" data-resetlink="${u.id}">Lien mot de passe</button><select data-grant="${u.id}" aria-label="Offrir un mois de cours"><option value="">Bourse : offrir 1 mois…</option>${cat.map((c) => `<option value="${c.id}">${esc(c.title)}</option>`).join("")}</select><button class="btn btn-ghost btn-sm" data-suspend="${u.id}" data-val="${u.suspended ? 0 : 1}">${u.suspended ? "Réactiver" : "Suspendre"}</button></td></tr>`).join("")}
+      <td style="display:flex;gap:6px;flex-wrap:wrap"><button class="btn btn-ghost btn-sm" data-resetmail="${u.id}" data-email="${esc(u.email)}">E-mail mot de passe</button><button class="btn btn-ghost btn-sm" data-resetlink="${u.id}">Lien mot de passe</button><select data-grant="${u.id}" aria-label="Offrir un mois de cours"><option value="">Bourse : offrir 1 mois…</option>${cat.map((c) => `<option value="${c.id}">${esc(c.title)}</option>`).join("")}</select><button class="btn btn-ghost btn-sm" data-suspend="${u.id}" data-val="${u.suspended ? 0 : 1}">${u.suspended ? "Réactiver" : "Suspendre"}</button></td></tr>`).join("")}
     </tbody></table></div><div id="resetOut"></div>`;
   }
   if (adminTab === "feedback") return head + await adminFeedback();
@@ -1493,6 +1493,14 @@ document.addEventListener("click", async (e) => {
   if (ds.tts) { t.disabled = true; try { await api("/api/admin/tts", { method: "POST", body: { courseId: +ds.tts } }); toast("Génération des voix lancée"); render(); } catch (err) { toast(err.message, true); t.disabled = false; } return; }
   if (ds.ttsstop !== undefined) { await api("/api/admin/tts", { method: "POST", body: { stop: true } }).catch(() => {}); toast("Arrêt demandé"); render(); return; }
   if (ds.atab) { adminTab = ds.atab; return render(); }
+  if (ds.resetmail) {
+    // Confirmation dans la page (pas de confirm() du navigateur).
+    if (t.dataset.armed !== "1") { t.dataset.armed = "1"; t.dataset.label = t.textContent; t.textContent = "Confirmer l’envoi"; t.classList.add("btn-primary"); setTimeout(() => { if (t.isConnected && t.dataset.armed === "1") { t.dataset.armed = ""; t.textContent = t.dataset.label; t.classList.remove("btn-primary"); } }, 6000); return; }
+    t.dataset.armed = ""; t.disabled = true; t.textContent = "Envoi…";
+    try { const r = await api(`/api/admin/users/${ds.resetmail}/reset-email`, { method: "POST" }); toast("E-mail envoyé à " + r.to); t.textContent = "E-mail envoyé ✓"; }
+    catch (err) { toast(err.message, true); t.textContent = t.dataset.label; }
+    t.classList.remove("btn-primary"); t.disabled = false; return;
+  }
   if (ds.resetlink) {
     // Le lien s'ouvre dans une fenêtre au milieu de l'écran (avant, il s'affichait tout en bas du tableau, hors de vue).
     t.disabled = true;
