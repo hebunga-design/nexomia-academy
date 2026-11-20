@@ -101,5 +101,5 @@ if (synced) console.log(`Cours d'anglais mis à jour : ${synced} leçons`);
 startReconciliation();
 Mail.startScheduler();
 server.listen(PORT, () => {
-  console.log(`NEXOMIA Academy en ligne sur le port ${PORT} · paiements : ${providerName()} · e-mails : ${Mail.provider() || "non configurés"}${seeded ? " · catalogue de départ créé" : ""}`);
+  console.log(`NEXOMIA Academy en ligne sur le port ${PORT} · paiements : ${providerName()} · e-mails : ${Mail.provider() || "non configurés"} · classe vidéo : ${require("./classroom").status()}${seeded ? " · catalogue de départ créé" : ""}`);
 });

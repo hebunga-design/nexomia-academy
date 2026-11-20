@@ -28,4 +28,14 @@ function token(user, room, moderator) {
   return `${unsigned}.${sig}`;
 }
 
-module.exports = { enabled, appId, roomFor, token, domain: "8x8.vc" };
+// Diagnostic au démarrage : vérifie que la clé privée collée dans Railway est lisible.
+function status() {
+  if (!appId() && !process.env.JAAS_KID && !process.env.JAAS_PRIVATE_KEY) return "non configurée";
+  if (!appId()) return "JAAS_APP_ID manquant";
+  if (!appId().startsWith("vpaas-magic-cookie-")) return "JAAS_APP_ID inattendu (doit commencer par vpaas-magic-cookie-)";
+  if (!kid()) return "JAAS_KID manquant";
+  try { crypto.createPrivateKey(privateKey()); } catch { return "JAAS_PRIVATE_KEY illisible (recopier tout le fichier .pk)"; }
+  return "jaas (8x8) prête";
+}
+
+module.exports = { status, enabled, appId, roomFor, token, domain: "8x8.vc" };
