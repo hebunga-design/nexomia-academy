@@ -260,8 +260,10 @@ function priceBlock() {
 // Chaque grande page s'ouvre sur une « scène » : une photo (Admin → Photos) baignée d'une lumière de fin de journée.
 // Sans photo, la scène dessine un ciel de crépuscule sur Lubumbashi.
 function greet() { const h = new Date().getHours(); return h < 5 ? "Bonsoir" : h < 12 ? "Bonjour" : h < 18 ? "Bon après-midi" : "Bonsoir"; }
+// Photos par défaut (remplaçables dans Admin → Photos).
+const DEFAULT_PHOTOS = { accueil: "/img/scene-accueil.jpg", connexion: "/img/scene-connexion.jpg", parcours: "/img/scene-parcours.jpg" };
 function scene(slot, inner, { size = "md", cls = "" } = {}) {
-  const ph = (S.photos || {})[slot];
+  const ph = (S.photos || {})[slot] || DEFAULT_PHOTOS[slot];
   return `<section class="scene scene-${size} ${ph ? "has-photo" : "no-photo"} ${cls}">
     <div class="scene-bg"${ph ? ` style="background-image:url('${esc(ph)}')"` : ""} aria-hidden="true">${ph ? "" : `<span class="sun"></span><span class="hz"></span>`}</div>
     <div class="scene-light" aria-hidden="true"></div>
@@ -1404,7 +1406,7 @@ const PHOTO_SLOTS = [["accueil", "Accueil", "La première image que voient les v
 function adminPhotos() {
   return `<div class="card"><h3 style="font-size:20px">Photos d’ambiance</h3>
     <p class="muted" style="font-size:15px;margin-top:6px;max-width:70ch">Une photo par page. Choisissez des images de vos apprenants, de vos formations ou de Lubumbashi, de préférence en format paysage. L’application les réduit automatiquement (environ 200 Ko) et ajoute une lumière de fin de journée. Pour une photo où l’on reconnaît des personnes, demandez-leur leur accord.</p></div>
-    <div class="photogrid">${PHOTO_SLOTS.map(([k, t, d]) => { const ph = (S.photos || {})[k]; return `<div class="card photoslot"><div class="pthumb"${ph ? ` style="background-image:url('${esc(ph)}')"` : ""}>${ph ? "" : `<span class="muted">Ciel de crépuscule (par défaut)</span>`}</div>
+    <div class="photogrid">${PHOTO_SLOTS.map(([k, t, d]) => { const ph = (S.photos || {})[k], show = ph || DEFAULT_PHOTOS[k]; return `<div class="card photoslot"><div class="pthumb"${show ? ` style="background-image:url('${esc(show)}')"` : ""}>${show ? "" : `<span class="muted">Ciel de coucher de soleil (par défaut)</span>`}</div>${!ph && show ? `<p class="muted" style="font-size:12px;margin-top:6px">Photo par défaut</p>` : ""}
       <h4 style="margin-top:10px">${t}</h4><p class="muted" style="font-size:13px">${d}</p>
       <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px"><label class="btn btn-primary btn-sm" style="cursor:pointer">${ph ? "Changer" : "Choisir une photo"}<input type="file" accept="image/*" data-photo="${k}" hidden></label>${ph ? `<button class="btn btn-ghost btn-sm" data-photodel="${k}">Retirer</button>` : ""}</div></div>`; }).join("")}</div>`;
 }

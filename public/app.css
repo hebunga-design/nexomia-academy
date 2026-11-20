@@ -708,27 +708,27 @@ html[data-app] a[href^="#/abonnements"], html[data-app] a[href^="#/cadeau"], htm
 
 /* ================= Scènes d'accueil : lumière de fin de journée sur Lubumbashi =================
    Une photo (ou un ciel de crépuscule dessiné) sous un voile bleu nuit NEXOMIA, réchauffé par une lumière ambrée basse. */
-:root{ --dusk:#0F1B26; --dusk-2:#1E2D3B; --amber:#F2B45C; --ember:#C9793A; --mist:#E9E2D3 }
-.scene{position:relative;isolation:isolate;overflow:hidden;border-radius:28px;color:#F4EFE6;margin:4px 0 26px;background:var(--dusk);
+:root{ --dusk:#0B2530; --dusk-2:#123B3F; --amber:#FFB84D; --ember:#FF8A50; --mist:#EAF4EE }
+.scene{position:relative;isolation:isolate;overflow:hidden;border-radius:28px;color:#F4EFE6;margin:4px 0 26px;background:var(--dusk);border:1px solid rgba(255,184,77,.18);
   box-shadow:0 30px 60px -34px rgba(15,27,38,.75)}
 .scene-md{min-height:300px}
 .scene-xl{min-height:min(640px,82vh)}
-.scene-bg{position:absolute;inset:-4%;z-index:-2;background-size:cover;background-position:center 35%;filter:saturate(.82) contrast(1.04)}
+.scene-bg{position:absolute;inset:-4%;z-index:-2;background-size:cover;background-position:center 30%;filter:saturate(1.12) contrast(1.05) brightness(1.04)}
 @media (prefers-reduced-motion:no-preference){.scene-bg{animation:kenburns 38s ease-in-out infinite alternate}}
 @keyframes kenburns{from{transform:scale(1.02) translate3d(0,0,0)}to{transform:scale(1.1) translate3d(-1.5%,-1%,0)}}
 /* Voile : bleu nuit en haut à gauche (lisibilité du texte), lumière ambrée qui entre en bas à droite, grain photo. */
 .scene-light{position:absolute;inset:0;z-index:-1;pointer-events:none;
   background:
-    radial-gradient(120% 90% at 92% 105%, rgba(242,180,92,.55) 0%, rgba(201,121,58,.28) 28%, rgba(201,121,58,0) 58%),
-    radial-gradient(60% 50% at 78% 18%, rgba(242,180,92,.16), rgba(242,180,92,0) 70%),
-    linear-gradient(100deg, rgba(10,19,27,.92) 0%, rgba(15,27,38,.78) 38%, rgba(30,45,59,.35) 70%, rgba(30,45,59,.15) 100%),
-    linear-gradient(0deg, rgba(10,19,27,.55), rgba(10,19,27,0) 45%)}
+    radial-gradient(90% 80% at 100% 100%, rgba(255,184,77,.50) 0%, rgba(255,140,66,.22) 30%, rgba(255,140,66,0) 60%),
+    radial-gradient(55% 60% at 85% 0%, rgba(122,92,255,.22), rgba(122,92,255,0) 70%),
+    linear-gradient(100deg, rgba(8,32,40,.90) 0%, rgba(12,52,52,.70) 34%, rgba(20,70,58,.28) 64%, rgba(20,70,58,.05) 100%),
+    linear-gradient(0deg, rgba(8,24,32,.45), rgba(8,24,32,0) 40%)}
 .scene-light::after{content:"";position:absolute;inset:0;opacity:.16;mix-blend-mode:overlay;
   background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23n)' opacity='.9'/%3E%3C/svg%3E")}
 /* Sans photo : un ciel de crépuscule, un soleil bas et l'horizon. */
 .no-photo .scene-bg{background:
-    radial-gradient(70% 55% at 80% 92%, #F6C77A 0%, #E39A55 18%, rgba(176,98,74,.75) 34%, rgba(84,62,92,.0) 62%),
-    linear-gradient(180deg, #0E1A28 0%, #1B2B40 36%, #3B3A55 62%, #8A5A55 84%, #C98352 100%)}
+    radial-gradient(60% 55% at 80% 95%, #FFD27A 0%, #FF9E57 20%, rgba(240,98,110,.75) 40%, rgba(120,72,170,0) 68%),
+    linear-gradient(180deg, #102A43 0%, #24345F 30%, #5B3E86 55%, #C2547A 78%, #FF8A50 100%)}
 .no-photo .sun{position:absolute;right:16%;bottom:9%;width:150px;height:150px;border-radius:50%;
   background:radial-gradient(circle,#FFE2A8 0%,#F7B964 45%,rgba(247,185,100,0) 72%);filter:blur(2px)}
 .no-photo .hz{position:absolute;left:0;right:0;bottom:0;height:18%;background:linear-gradient(180deg,rgba(14,26,40,0),rgba(14,26,40,.85) 75%)}
@@ -739,12 +739,12 @@ html[data-app] a[href^="#/abonnements"], html[data-app] a[href^="#/cadeau"], htm
 .scene .lede{color:#E9E2D3;font-size:clamp(16px,1.6vw,19px);max-width:56ch;margin-top:14px;opacity:.94}
 .scene .btn-ghost{color:#FFF8EE;border-color:rgba(255,248,238,.5);background:rgba(255,248,238,.06)}
 .scene .btn-ghost:hover{background:rgba(255,248,238,.14)}
-.scene .btn-primary{box-shadow:0 10px 30px -10px rgba(242,180,92,.55)}
+.scene .btn-primary{background:linear-gradient(135deg,#3A9A3F,#2F7D32);box-shadow:0 12px 30px -10px rgba(58,154,63,.65)}
 /* Accueil : le grand titre et la carte d'écoute en verre dépoli */
 .scene .hero{padding:0;gap:clamp(24px,4vw,56px)}
 .scene .hero h1 em{color:var(--amber)}
 .scene .hero .lede{color:#E9E2D3}
-.scene .hero-card{background:rgba(12,22,31,.52);backdrop-filter:blur(14px) saturate(1.2);-webkit-backdrop-filter:blur(14px) saturate(1.2);border:1px solid rgba(255,248,238,.14);box-shadow:0 24px 60px -30px rgba(0,0,0,.7)}
+.scene .hero-card{background:rgba(8,36,44,.55);backdrop-filter:blur(14px) saturate(1.2);-webkit-backdrop-filter:blur(14px) saturate(1.2);border:1px solid rgba(255,248,238,.14);box-shadow:0 24px 60px -30px rgba(0,0,0,.7)}
 .scene .hero-card .eyebrow{color:var(--amber)}
 .scene .hero-card .play{background:var(--amber);color:#2A1A08;box-shadow:0 8px 26px -8px rgba(242,180,92,.75)}
 .scene .hero-card .wave i{background:var(--amber)}
