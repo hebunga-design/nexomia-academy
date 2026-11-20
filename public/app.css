@@ -803,9 +803,9 @@ html[data-app] a[href^="#/abonnements"], html[data-app] a[href^="#/cadeau"], htm
 @keyframes ribbon{to{transform:translateX(-50%)}}
 .ribbon .rb0{color:var(--green)}.ribbon .rb1{color:#A8521C}.ribbon .rb2{color:var(--navy)}
 .ribbon i{font-style:normal;font-size:.5em;color:var(--sage)}
-@media (prefers-color-scheme:dark){:root:not([data-theme="light"]) body{background-image:radial-gradient(60vw 50vh at 100% 0%, rgba(255,184,77,.10), transparent 70%),radial-gradient(55vw 55vh at 0% 30%, rgba(79,166,84,.10), transparent 70%),radial-gradient(50vw 50vh at 90% 85%, rgba(122,92,255,.10), transparent 70%)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]) body{background-image:radial-gradient(60vw 50vh at 100% 0%, rgba(255,184,77,.10), transparent 70%),radial-gradient(55vw 55vh at 0% 30%, rgba(79,166,84,.10), transparent 70%),radial-gradient(50vw 50vh at 90% 85%, rgba(141,186,143,.10), transparent 70%)}
   :root:not([data-theme="light"]) .ribbon .rb1{color:#FFB84D}:root:not([data-theme="light"]) .ribbon .rb2{color:#C5DCC6}}
-:root[data-theme="dark"] body{background-image:radial-gradient(60vw 50vh at 100% 0%, rgba(255,184,77,.10), transparent 70%),radial-gradient(55vw 55vh at 0% 30%, rgba(79,166,84,.10), transparent 70%),radial-gradient(50vw 50vh at 90% 85%, rgba(122,92,255,.10), transparent 70%)}
+:root[data-theme="dark"] body{background-image:radial-gradient(60vw 50vh at 100% 0%, rgba(255,184,77,.10), transparent 70%),radial-gradient(55vw 55vh at 0% 30%, rgba(79,166,84,.10), transparent 70%),radial-gradient(50vw 50vh at 90% 85%, rgba(141,186,143,.10), transparent 70%)}
 :root[data-theme="dark"] .ribbon .rb1{color:#FFB84D}:root[data-theme="dark"] .ribbon .rb2{color:#C5DCC6}
 @media (max-width:700px){.fw{font-size:15px!important;color:rgba(255,236,205,.11)!important}.fw:nth-child(n+7){display:none}}
 
