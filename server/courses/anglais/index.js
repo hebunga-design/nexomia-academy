@@ -3,13 +3,15 @@
 // les leçons au démarrage (les abonnements et la progression sont conservés).
 const fs = require("node:fs"), path = require("node:path");
 const extra = (f) => (fs.existsSync(path.join(__dirname, f + ".js")) ? require("./" + f) : []);
+const PLUS = extra("plus"); // leçons ajoutées après l’audit du programme (CECRL + erreurs des francophones)
+const more = (f, lv) => [...extra(f), ...((PLUS && PLUS[lv]) || [])];
 const LEVELS = [
-  ["A1 · Débutant", require("./a1"), extra("a1x")],
-  ["A2 · Élémentaire", require("./a2"), extra("a2x")],
-  ["B1 · Intermédiaire", require("./b1"), extra("b1x")],
-  ["B2 · Intermédiaire avancé", require("./b2"), extra("b2x")],
-  ["C1 · Avancé", require("./c1"), extra("c1x")],
-  ["C2 · Maîtrise", require("./c2"), extra("c2x")],
+  ["A1 · Débutant", require("./a1"), more("a1x", "A1")],
+  ["A2 · Élémentaire", require("./a2"), more("a2x", "A2")],
+  ["B1 · Intermédiaire", require("./b1"), more("b1x", "B1")],
+  ["B2 · Intermédiaire avancé", require("./b2"), more("b2x", "B2")],
+  ["C1 · Avancé", require("./c1"), more("c1x", "C1")],
+  ["C2 · Maîtrise", require("./c2"), more("c2x", "C2")],
   ["Pro · Anglais professionnel", [], extra("pro")],
 ].filter(([, base, more]) => base.length + more.length);
 
@@ -55,11 +57,11 @@ const lessons = LEVELS.flatMap(([module, base, more]) => merge(module, base, mor
 })));
 
 module.exports = {
-  VERSION: 5,
+  VERSION: 6,
   slug: "anglais",
   meta: {
     code: "EN", level: "Tous niveaux · A1 à C2", lang: "en-GB",
-    description: "Le parcours complet, du tout premier « Hello » jusqu’au discours en public : 96 leçons audio et histoires, de débutant (A1) à maîtrise (C2), plus un module d’anglais professionnel (mines, douane, santé, banque…), avec grammaire expliquée en français, vocabulaire et exercices d’écoute.",
+    description: "Le parcours complet, du tout premier « Hello » jusqu’au discours en public : 109 leçons audio et histoires, de débutant (A1) à maîtrise (C2), plus un module d’anglais professionnel (mines, douane, santé, banque…), avec grammaire expliquée en français, vocabulaire et exercices d’écoute.",
   },
   lessons,
 };
