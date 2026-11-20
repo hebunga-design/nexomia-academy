@@ -10,6 +10,7 @@ const C = require("./content");
 const { pricing, totalFor, validatePricing } = require("./pricing");
 const L = require("./learning");
 const Mail = require("./mail");
+const Live = require("./live");
 const PLACEMENT = { anglais: require("./courses/anglais/placement") };
 
 const r = createRouter();
@@ -789,7 +790,64 @@ r.post("/api/admin/users/:id/grant", async (ctx) => {
   const cur = B.activeEnd(u.id, c.id); const start = cur || nowIso();
   run("INSERT INTO periods(user_id, course_id, order_id, start_at, end_at, source) VALUES(?, ?, NULL, ?, ?, 'bourse')", u.id, c.id, start, B.addOneMonth(start));
   audit(ctx.user.id, "scholarship_granted", { user: u.id, course: c.id, reason: b.reason || null });
+  Live.onAccess(u.id, [c.id]);
   ok(ctx, { ok: true });
+});
+
+// ---------- Cours en direct ----------
+const liveOut = (s, unlocked) => ({ id: s.id, title: s.title, level: s.level, starts_on: s.starts_on, ends_on: s.ends_on, schedule: s.schedule, notes: s.notes, unlocked, link: unlocked ? s.link : null, has_link: !!s.link });
+// Sessions en cours ou à venir, pour tous les cours ; le lien n'est donné qu'aux abonnés actifs du cours.
+r.get("/api/live", (ctx) => {
+  const rows = all(`SELECT s.*, c.slug, c.title AS course_title FROM live_sessions s JOIN courses c ON c.id = s.course_id
+    WHERE s.active = 1 AND s.ends_on >= ? AND c.status = 'published' ORDER BY s.starts_on`, Live.today());
+  ok(ctx, { sessions: rows.map((s) => ({ ...liveOut(s, !!ctx.user && Live.hasSub(ctx.user.id, s.course_id)), course: { id: s.course_id, slug: s.slug, title: s.course_title } })) });
+});
+const liveInput = (b) => {
+  const d = (x) => (/^\d{4}-\d{2}-\d{2}$/.test(String(x || "")) ? String(x) : null);
+  const v = { title: String(b.title || "").trim().slice(0, 120), level: String(b.level || "").trim().slice(0, 40), starts_on: d(b.starts_on), ends_on: d(b.ends_on),
+    schedule: String(b.schedule || "").trim().slice(0, 2000), link: String(b.link || "").trim().slice(0, 500), notes: String(b.notes || "").trim().slice(0, 2000), active: b.active === false ? 0 : 1 };
+  if (!v.title || !v.starts_on || !v.ends_on) throw new HttpError(400, "Indique un titre, une date de début et une date de fin.");
+  if (v.ends_on < v.starts_on) throw new HttpError(400, "La date de fin doit être après la date de début.");
+  if (v.link && !/^https:\/\//.test(v.link)) throw new HttpError(400, "Le lien doit commencer par https:// (par exemple un lien Google Meet).");
+  return v;
+};
+r.get("/api/admin/live", (ctx) => {
+  admin(ctx);
+  const rows = all(`SELECT s.*, c.title AS course_title, (SELECT COUNT(*) FROM live_notified n WHERE n.session_id = s.id) AS notified FROM live_sessions s JOIN courses c ON c.id = s.course_id ORDER BY s.starts_on DESC`);
+  ok(ctx, { sessions: rows.map((s) => ({ ...s, subscribers: Live.subscribersCount(s.course_id) })), mail: Mail.provider() });
+});
+r.post("/api/admin/live", async (ctx) => {
+  admin(ctx);
+  const b = await readJson(ctx.req), v = liveInput(b);
+  const c = one("SELECT id FROM courses WHERE id = ?", Number(b.course_id));
+  if (!c) throw new HttpError(404, "Cours introuvable.");
+  const r2 = run("INSERT INTO live_sessions(course_id, title, level, starts_on, ends_on, schedule, link, notes, active) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?)", c.id, v.title, v.level, v.starts_on, v.ends_on, v.schedule, v.link, v.notes, v.active);
+  audit(ctx.user.id, "live_created", { id: Number(r2.lastInsertRowid) });
+  ok(ctx, { id: Number(r2.lastInsertRowid) });
+});
+r.put("/api/admin/live/:id", async (ctx) => {
+  admin(ctx);
+  const s = one("SELECT id FROM live_sessions WHERE id = ?", Number(ctx.params.id));
+  if (!s) throw new HttpError(404, "Session introuvable.");
+  const v = liveInput(await readJson(ctx.req));
+  run("UPDATE live_sessions SET title = ?, level = ?, starts_on = ?, ends_on = ?, schedule = ?, link = ?, notes = ?, active = ? WHERE id = ?", v.title, v.level, v.starts_on, v.ends_on, v.schedule, v.link, v.notes, v.active, s.id);
+  audit(ctx.user.id, "live_updated", { id: s.id });
+  ok(ctx, { ok: true });
+});
+r.del("/api/admin/live/:id", (ctx) => {
+  admin(ctx);
+  run("DELETE FROM live_sessions WHERE id = ?", Number(ctx.params.id));
+  audit(ctx.user.id, "live_deleted", { id: Number(ctx.params.id) });
+  ok(ctx, { ok: true });
+});
+// Envoie le lien et les horaires par e-mail aux abonnés actifs (resend : aussi à ceux qui l'ont déjà reçu, après un changement).
+r.post("/api/admin/live/:id/notify", async (ctx) => {
+  admin(ctx);
+  const b = await readJson(ctx.req);
+  const res = await Live.notifyAll(Number(ctx.params.id), { resend: !!b.resend });
+  if (res.error === "not_configured") throw new HttpError(400, "L'envoi d'e-mails n'est pas configuré.");
+  audit(ctx.user.id, "live_notified", { id: Number(ctx.params.id), ...res });
+  ok(ctx, res);
 });
 r.get("/api/admin/orders", (ctx) => {
   admin(ctx);

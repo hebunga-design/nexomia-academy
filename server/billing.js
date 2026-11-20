@@ -237,6 +237,7 @@ function redeemGift(user, code) {
     }
     run("UPDATE gift_codes SET redeemed_by = ?, redeemed_at = ? WHERE code = ?", user.id, now, g.code);
     audit(user.id, "gift_redeemed", { code: g.code });
+    require("./live").onAccess(user.id, ids);
     return { courses: ids.map((id) => one("SELECT id, slug, title FROM courses WHERE id = ?", id)).filter(Boolean) };
   });
 }
@@ -262,6 +263,7 @@ function markPaid(orderId, source = "payment") {
       run("INSERT OR IGNORE INTO periods(user_id, course_id, order_id, start_at, end_at, source) VALUES(?, ?, ?, ?, ?, ?)", o.user_id, it.course_id, orderId, start, addOneMonth(start), source);
     }
     audit(o.user_id, "order_paid", { orderId, source });
+    require("./live").onAccess(o.user_id, all("SELECT course_id FROM order_items WHERE order_id = ?", orderId).map((x) => x.course_id));
     return true;
   });
 }

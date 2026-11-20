@@ -189,7 +189,7 @@ const routes = [
   [/^#\/parcours$/, vDash, "auth"], [/^#\/abonnements$/, vSubs], [/^#\/connexion$/, vLogin], [/^#\/inscription$/, vRegister],
   [/^#\/reinitialiser\/([\w-]+)$/, vReset], [/^#\/recuperation$/, vRecover], [/^#\/studio$/, vStudio, "creator"], [/^#\/studio\/(\d+)$/, vStudioCourse, "creator"],
   [/^#\/admin$/, vAdmin, "admin"],
-  [/^#\/test-niveau\/([\w-]+)$/, vPlacement], [/^#\/bienvenue$/, vWelcome, "auth"], [/^#\/certificat\/([\w-]+)$/, vCertificate], [/^#\/revision$/, vReview, "auth"], [/^#\/suggestions$/, vSuggestions], [/^#\/grammaire$/, () => vGrammar("anglais")], [/^#\/lexique(?:\/([\w-]+))?$/, (k) => vLexicon("anglais", k)], [/^#\/examen\/([\w-]+)\/(\w+)$/, vExam, "auth"], [/^#\/cadeau(?:\/([\w-]+))?$/, vGift], [/^#\/mot-de-passe-oublie$/, vForgot], [/^#\/supprimer-compte$/, vDeleteAccount],
+  [/^#\/test-niveau\/([\w-]+)$/, vPlacement], [/^#\/bienvenue$/, vWelcome, "auth"], [/^#\/certificat\/([\w-]+)$/, vCertificate], [/^#\/revision$/, vReview, "auth"], [/^#\/suggestions$/, vSuggestions], [/^#\/grammaire$/, () => vGrammar("anglais")], [/^#\/lexique(?:\/([\w-]+))?$/, (k) => vLexicon("anglais", k)], [/^#\/examen\/([\w-]+)\/(\w+)$/, vExam, "auth"], [/^#\/cadeau(?:\/([\w-]+))?$/, vGift], [/^#\/mot-de-passe-oublie$/, vForgot], [/^#\/supprimer-compte$/, vDeleteAccount], [/^#\/direct$/, vLive],
 ];
 function parseHash() { const h = location.hash || "#/"; const [p, q] = h.split("?"); return { path: p, query: new URLSearchParams(q || "") }; }
 let renderId = 0;
@@ -222,7 +222,7 @@ async function render() {
     app.innerHTML = `<div class="empty"><p><b>${esc(e.message)}</b></p><p style="margin-top:12px"><button class="btn btn-ghost btn-sm" data-reload>Réessayer</button></p></div>`;
   }
 }
-const footer = () => `<footer><div class="wrap" style="padding:0"><span><b style="color:var(--ink)">NEXOMIA</b> · Former · Créer · Transformer · Lubumbashi, RDC</span><span style="display:flex;gap:16px;flex-wrap:wrap"><a href="#/abonnements?offrir=1">Offrir un abonnement</a><a href="#/cadeau">J’ai un code cadeau</a><a href="#/suggestions">Boîte à suggestions</a></span><span class="app-hide">Paiements : M-Pesa · Airtel Money · Orange Money${S.methods.includes("card") ? " · Carte" : ""}</span></div></footer>`;
+const footer = () => `<footer><div class="wrap" style="padding:0"><span><b style="color:var(--ink)">NEXOMIA</b> · Former · Créer · Transformer · Lubumbashi, RDC</span><span style="display:flex;gap:16px;flex-wrap:wrap"><a href="#/abonnements?offrir=1">Offrir un abonnement</a><a href="#/cadeau">J’ai un code cadeau</a><a href="#/direct">Cours en direct</a><a href="#/suggestions">Boîte à suggestions</a></span><span class="app-hide">Paiements : M-Pesa · Airtel Money · Orange Money${S.methods.includes("card") ? " · Carte" : ""}</span></div></footer>`;
 
 async function loadCatalog(force) { if (!S.catalog || force) { const d = await api("/api/catalog"); S.catalog = d.courses; S.pricing = d.pricing; } return S.catalog; }
 
@@ -363,6 +363,7 @@ async function vCourse(slug) {
   return `<a class="back" href="#/cours">${I.back} Tous les cours</a>
   <div class="course-hero" style="background:${esc(c.color)}"><div><p class="eyebrow" style="color:#fff;opacity:.8">${esc(c.domain)} · ${esc(c.code)}</p><h1 style="margin:8px 0">${esc(c.title)}</h1><p>${esc(c.level)} · ${lessons.length} leçon${lessons.length > 1 ? "s" : ""}</p></div><span class="big" aria-hidden="true">${esc(c.big)}</span></div>
   ${c.status !== "published" ? `<div class="review-note">Aperçu équipe : ce cours n’est pas encore publié.</div>` : ""}
+  ${(await loadLive()).filter((x) => x.course.id === c.id).map((x) => liveCard(x, { compact: true })).join("")}
   <div class="dash">
     <div style="min-width:0">${placement_test ? `<div class="ptbanner">${myLevel ? `<span>Ton niveau : <b>${esc(myLevel.level)} · ${esc(LEVEL_FR[myLevel.level] || "")}</b></span><a class="btn btn-ghost btn-sm" href="#/test-niveau/${esc(slug)}">Refaire le test</a>` : `<span><b>Pas sûr de ton niveau ?</b><br><small class="muted">10 minutes pour savoir où commencer, de A1 à C2.</small></span><a class="btn btn-primary btn-sm" href="#/test-niveau/${esc(slug)}">Passer le test</a>`}</div>` : ""}${modulesNav(lessons)}${groupByModule(lessons).map(([mod, ls], gi) => `<section class="modsec" id="mod-${gi}">
       ${mod ? `<div class="modhead"><h2>${esc(mod)}</h2><span class="muted">${ls.filter((l) => l.completed).length}/${ls.length} leçon${ls.length > 1 ? "s" : ""}</span></div>
@@ -705,6 +706,31 @@ function giftShareUrl(code, to) {
   const t = `${to ? to + ", j" : "J"}e t’offre un mois de cours sur NEXOMIA Academy 🎁\n\n1. Ouvre ce lien : ${giftLink(code)}\n2. Crée ton compte gratuit\n3. Active ton cadeau (code ${code})\n\nBon apprentissage !`;
   return "https://wa.me/?text=" + encodeURIComponent(t);
 }
+/* ================= Cours en direct ================= */
+const fmtDay = (d) => new Date(d + "T12:00:00Z").toLocaleDateString(store.get("uilang", "fr") === "en" ? "en-GB" : "fr-FR", { weekday: "long", day: "numeric", month: "long", timeZone: "UTC" });
+async function loadLive() { try { return (await api("/api/live")).sessions || []; } catch { return []; } }
+function liveCard(s, { compact = false } = {}) {
+  const rows = String(s.schedule || "").split("\n").map((x) => x.trim()).filter(Boolean);
+  const when = `Du ${esc(fmtDay(s.starts_on))} au ${esc(fmtDay(s.ends_on))}`;
+  if (compact) return `<a class="livebanner" href="#/direct"><span class="livedot" aria-hidden="true"></span><span><b>Cours en direct : ${esc(s.title)}</b><br><small>${when}${s.unlocked ? " · ton lien est prêt" : ""}</small></span></a>`;
+  const access = s.unlocked
+    ? (s.link ? `<a class="btn btn-primary" href="${esc(s.link)}" target="_blank" rel="noopener">Rejoindre le cours en direct</a><button class="btn btn-ghost" data-copy="${esc(s.link)}">Copier le lien</button>` : `<p class="muted">Le lien de connexion sera publié ici et envoyé par e-mail avant la première séance.</p>`)
+    : !S.me ? `<a class="btn btn-primary" href="#/connexion?next=${encodeURIComponent("#/direct")}">Me connecter</a><p class="muted" style="width:100%;font-size:14px">Réservé aux abonnés du cours ${esc(s.course.title)}.</p>`
+    : APP ? `<p class="muted">Réservé aux abonnés du cours ${esc(s.course.title)}. Si ton abonnement est actif, le lien apparaît ici automatiquement.</p>`
+    : `<button class="btn btn-primary" data-subscribe="${s.course.id}">M’abonner au cours ${esc(s.course.title)}</button><p class="muted" style="width:100%;font-size:14px">Le lien du cours en direct est inclus dans l’abonnement au cours ${esc(s.course.title)}. Dès le paiement, tu le reçois ici et par e-mail.</p>`;
+  return `<article class="card livecard"><p class="eyebrow">${esc(s.course.title)}${s.level ? ` · ${esc(s.level)}` : ""}</p>
+    <h2 style="font-size:clamp(24px,3vw,32px);margin:6px 0 4px">${esc(s.title)}</h2><p><b>${when}</b></p>
+    ${rows.length ? `<h3 style="font-size:17px;margin-top:16px">Horaires <small class="muted" style="font-weight:400">(heure de Lubumbashi)</small></h3><ul class="liverows">${rows.map((r) => `<li>${esc(r)}</li>`).join("")}</ul>` : ""}
+    ${s.notes ? `<p class="muted" style="margin-top:12px;white-space:pre-line">${esc(s.notes)}</p>` : ""}
+    <div class="liveaccess">${access}</div></article>`;
+}
+async function vLive() {
+  const ss = await loadLive();
+  return `<p class="eyebrow">NEXOMIA Academy</p><h1 style="font-size:clamp(30px,4vw,44px);margin:8px 0">Cours en direct</h1>
+    <p class="muted" style="max-width:60ch">Des classes en ligne avec un formateur NEXOMIA, à heures fixes. Le lien est inclus dans l’abonnement au cours ; entre deux séances, tu révises avec les leçons audio.</p>
+    <div style="display:grid;gap:16px;margin-top:20px">${ss.length ? ss.map((s) => liveCard(s)).join("") : `<div class="empty"><h2>Aucun cours en direct pour le moment</h2><p class="muted" style="margin-top:8px">La prochaine session sera annoncée ici et par e-mail.</p></div>`}</div>`;
+}
+
 async function vDeleteAccount() {
   const head = `<div class="auth-wrap" style="max-width:620px;margin:0 auto"><h1 style="font-size:clamp(30px,4vw,42px)">Supprimer mon compte</h1>
     <p class="muted" style="margin-top:10px">La suppression est définitive. Elle efface ton nom, ton adresse e-mail, ton téléphone, ta progression, tes points, tes certificats, tes commentaires et tes avis. Les paiements déjà faits restent enregistrés sans tes coordonnées, pour la comptabilité de NEXOMIA SARL. Un abonnement en cours n’est pas remboursé.</p>`;
@@ -1004,6 +1030,7 @@ async function vDash() {
   return `<div class="dash-hello"><div><p class="eyebrow">Mon parcours</p><h1>${d.completed || d.xp ? "Content de te revoir" : "Bienvenue"}, ${first}.</h1></div>
     <div class="hello-stats"><span class="pill streak ${d.streak ? "on" : ""}" title="Jours de suite">🔥 ${d.streak} jour${d.streak > 1 ? "s" : ""}</span><span class="pill xp" title="Points">⚡ ${d.xp.toLocaleString("fr-FR")} pts</span></div></div>
   <div class="dash"><div style="display:grid;gap:18px;min-width:0">
+    ${(await loadLive()).filter((x) => x.unlocked).map((x) => liveCard(x, { compact: true })).join("")}
     ${n ? `<div class="card continue"><p class="eyebrow">Continuer · ${esc(n.course)}</p><h3>${esc(n.title)}</h3><p style="color:#A9BCB0">Leçon ${n.position} · ${n.duration_min} min${n.locked ? " · abonnement requis" : ""}</p><a class="btn btn-primary" style="margin-top:16px" href="#/lecon/${n.id}">${I.spk} ${n.locked ? "Voir la leçon" : "Reprendre l’écoute"}</a></div>`
       : `<div class="card continue"><p class="eyebrow">Commencer</p><h3>Choisis ton premier cours</h3><p style="color:#A9BCB0">La première leçon de chaque cours est gratuite.</p><a class="btn btn-primary" style="margin-top:16px" href="#/cours">Voir les cours</a></div>`}
     <div class="dash-duo">
@@ -1334,9 +1361,35 @@ async function vStudioCourse(id) {
 
 /* ================= Administration ================= */
 let adminTab = "overview";
+let liveEdit = null;
+async function adminLive() {
+  const [{ sessions, mail }, cat] = [await api("/api/admin/live"), await loadCatalog()];
+  const e = liveEdit ? sessions.find((x) => x.id === liveEdit) || {} : {};
+  const en = cat.find((c) => c.slug === "anglais");
+  return `<div class="card"><h3 style="font-size:20px">${e.id ? "Modifier la session" : "Nouvelle session en direct"}</h3>
+    <p class="muted" style="font-size:14px;margin-top:4px">Les abonnés actifs du cours voient le lien dans l’application. Chaque nouvel abonné le reçoit aussi automatiquement par e-mail dès son paiement.</p>
+    <form id="liveForm" data-id="${e.id || ""}" style="display:grid;gap:12px;margin-top:14px">
+      <div class="two"><div class="field"><label for="lv-course">Cours</label><select id="lv-course">${cat.map((c) => `<option value="${c.id}" ${(e.course_id || (en && en.id)) === c.id ? "selected" : ""}>${esc(c.title)}</option>`).join("")}</select></div>
+      <div class="field"><label for="lv-level">Niveau</label><input id="lv-level" value="${esc(e.level || "A1 · Débutant")}"></div></div>
+      <div class="field"><label for="lv-title">Titre</label><input id="lv-title" required value="${esc(e.title || "Anglais accéléré : 21 jours pour débutants")}"></div>
+      <div class="two"><div class="field"><label for="lv-start">Premier jour</label><input id="lv-start" type="date" required value="${esc(e.starts_on || "")}"></div>
+      <div class="field"><label for="lv-end">Dernier jour</label><input id="lv-end" type="date" required value="${esc(e.ends_on || "")}"></div></div>
+      <div class="field"><label for="lv-sched">Horaires (une ligne par créneau, heure de Lubumbashi)</label><textarea id="lv-sched" rows="4" placeholder="Lundi au vendredi : 18 h 00 – 19 h 30&#10;Samedi : 10 h 00 – 12 h 00">${esc(e.schedule || "")}</textarea></div>
+      <div class="field"><label for="lv-link">Lien de la classe (Google Meet, Zoom…)</label><input id="lv-link" type="url" placeholder="https://meet.google.com/…" value="${esc(e.link || "")}"></div>
+      <div class="field"><label for="lv-notes">Message aux participants (facultatif)</label><textarea id="lv-notes" rows="3" placeholder="Prévoir un cahier, des écouteurs et une bonne connexion.">${esc(e.notes || "")}</textarea></div>
+      <label class="switch"><input id="lv-active" type="checkbox" ${e.active === 0 ? "" : "checked"}><span class="sw" aria-hidden="true"></span><span>Visible par les apprenants</span></label>
+      <p id="formErr" class="err" role="alert"></p>
+      <div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn btn-primary">${e.id ? "Enregistrer" : "Créer la session"}</button>${e.id ? `<button type="button" class="btn btn-ghost" data-livecancel>Annuler</button>` : ""}</div>
+    </form></div>
+    <h3 style="font-size:20px;margin:24px 0 10px">Sessions</h3>
+    ${sessions.length ? `<div class="slist">${sessions.map((x) => `<div class="sitem" style="align-items:flex-start;flex-wrap:wrap;gap:10px"><div style="min-width:0;flex:1"><b>${esc(x.title)}</b> <span class="status ${x.active ? "st-pub" : "st-draft"}">${x.active ? "Visible" : "Masquée"}</span><br><small class="muted">${esc(x.course_title)} · du ${fmtD(x.starts_on)} au ${fmtD(x.ends_on)} · ${x.link ? "lien renseigné" : "<b>pas encore de lien</b>"} · e-mail reçu par ${x.notified} / ${x.subscribers} abonné${x.subscribers > 1 ? "s" : ""} actif${x.subscribers > 1 ? "s" : ""}</small></div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap"><button class="btn btn-ghost btn-sm" data-liveedit="${x.id}">Modifier</button>${mail ? `<button class="btn btn-ghost btn-sm" data-livenotify="${x.id}">Envoyer aux abonnés</button><button class="btn btn-ghost btn-sm" data-livenotify="${x.id}" data-resend="1">Renvoyer à tous</button>` : ""}<button class="btn btn-ghost btn-sm" data-livedel="${x.id}">Supprimer</button></div></div>`).join("")}</div>` : `<p class="muted">Aucune session pour le moment.</p>`}
+    ${mail ? "" : `<div class="note" style="margin-top:12px">L’envoi d’e-mails n’est pas configuré : les abonnés verront quand même le lien dans l’application.</div>`}`;
+}
+
 async function vAdmin() {
   const head = `<p class="eyebrow">Administration</p><h1 style="font-size:clamp(30px,4vw,44px);margin:8px 0 6px">Pilotage NEXOMIA</h1>
-    <div class="tabs" role="group">${[["overview", "Vue d’ensemble"], ["users", "Utilisateurs"], ["orders", "Paiements"], ["feedback", "Retours"], ["mail", "E-mails"], ["voices", "Voix"]].map(([k, l]) => `<button data-atab="${k}" aria-pressed="${adminTab === k}">${l}</button>`).join("")}</div>`;
+    <div class="tabs" role="group">${[["overview", "Vue d’ensemble"], ["users", "Utilisateurs"], ["orders", "Paiements"], ["feedback", "Retours"], ["live", "Direct"], ["mail", "E-mails"], ["voices", "Voix"]].map(([k, l]) => `<button data-atab="${k}" aria-pressed="${adminTab === k}">${l}</button>`).join("")}</div>`;
   if (adminTab === "users") {
     const [{ users, roles }, cat] = [await api(`/api/admin/users?q=${encodeURIComponent(S.adminQ || "")}`), await loadCatalog()];
     return head + `<form id="userSearch" style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap"><input id="u-q" class="chip" style="flex:1;min-width:200px;font-weight:400;padding:10px 14px" placeholder="Rechercher un nom ou une adresse" value="${esc(S.adminQ || "")}"><button class="btn btn-ghost btn-sm">Rechercher</button></form>
@@ -1347,6 +1400,7 @@ async function vAdmin() {
     </tbody></table></div><div id="resetOut"></div>`;
   }
   if (adminTab === "feedback") return head + await adminFeedback();
+  if (adminTab === "live") return head + await adminLive();
   if (adminTab === "mail") {
     const m = await api("/api/admin/mail"), j = m.job;
     if (j.running) setTimeout(() => { if (adminTab === "mail" && location.hash === "#/admin") render(); }, 4000);
@@ -1493,6 +1547,19 @@ document.addEventListener("click", async (e) => {
   if (ds.tts) { t.disabled = true; try { await api("/api/admin/tts", { method: "POST", body: { courseId: +ds.tts } }); toast("Génération des voix lancée"); render(); } catch (err) { toast(err.message, true); t.disabled = false; } return; }
   if (ds.ttsstop !== undefined) { await api("/api/admin/tts", { method: "POST", body: { stop: true } }).catch(() => {}); toast("Arrêt demandé"); render(); return; }
   if (ds.atab) { adminTab = ds.atab; return render(); }
+  if (ds.liveedit) { liveEdit = +ds.liveedit; render(); return; }
+  if (ds.livecancel !== undefined) { liveEdit = null; render(); return; }
+  if (ds.livedel) {
+    if (t.dataset.armed !== "1") { t.dataset.armed = "1"; t.textContent = "Confirmer la suppression"; return; }
+    try { await api(`/api/admin/live/${ds.livedel}`, { method: "DELETE" }); toast("Session supprimée"); liveEdit = null; render(); } catch (err) { toast(err.message, true); } return;
+  }
+  if (ds.livenotify) {
+    if (t.dataset.armed !== "1") { t.dataset.armed = "1"; t.dataset.label = t.textContent; t.textContent = "Confirmer l’envoi"; t.classList.add("btn-primary"); return; }
+    t.disabled = true; t.textContent = "Envoi…";
+    try { const r = await api(`/api/admin/live/${ds.livenotify}/notify`, { method: "POST", body: { resend: ds.resend === "1" } }); toast(r.total ? `E-mail envoyé à ${r.sent} abonné${r.sent > 1 ? "s" : ""} sur ${r.total}` : "Tous les abonnés actifs l’ont déjà reçu"); render(); }
+    catch (err) { toast(err.message, true); t.disabled = false; t.textContent = t.dataset.label; t.classList.remove("btn-primary"); t.dataset.armed = ""; }
+    return;
+  }
   if (ds.resetmail) {
     // Confirmation dans la page (pas de confirm() du navigateur).
     if (t.dataset.armed !== "1") { t.dataset.armed = "1"; t.dataset.label = t.textContent; t.textContent = "Confirmer l’envoi"; t.classList.add("btn-primary"); setTimeout(() => { if (t.isConnected && t.dataset.armed === "1") { t.dataset.armed = ""; t.textContent = t.dataset.label; t.classList.remove("btn-primary"); } }, 6000); return; }
@@ -1542,6 +1609,11 @@ document.addEventListener("submit", async (e) => {
   const err = (m) => { const el = f.querySelector("#formErr") || $("#formErr"); if (el) el.textContent = m; else toast(m, true); };
   const btn = f.querySelector("button:not([type=button])"); if (btn) btn.disabled = true;
   try {
+    if (f.id === "liveForm") {
+      const body = { course_id: +$("#lv-course").value, level: $("#lv-level").value, title: $("#lv-title").value, starts_on: $("#lv-start").value, ends_on: $("#lv-end").value, schedule: $("#lv-sched").value, link: $("#lv-link").value, notes: $("#lv-notes").value, active: $("#lv-active").checked };
+      if (f.dataset.id) await api(`/api/admin/live/${f.dataset.id}`, { method: "PUT", body }); else await api("/api/admin/live", { method: "POST", body });
+      toast(f.dataset.id ? "Session enregistrée" : "Session créée"); liveEdit = null; render(); return;
+    }
     if (f.id === "deleteForm") { if (!$("#del-ok").checked) throw new Error("Coche la case pour confirmer."); await api("/api/me/delete", { method: "POST", body: { password: $("#del-pw").value } }); S.me = null; S.catalog = null; toast("Ton compte a été supprimé"); location.hash = "#/"; return; }
     if (f.id === "loginForm") { const r = await api("/api/auth/login", { method: "POST", body: { email: $("#l-email").value, password: $("#l-pw").value } }); S.me = r.user; S.catalog = null; await sendPendingPlacement(); location.hash = f.dataset.next; }
     else if (f.id === "registerForm") { const r = await api("/api/auth/register", { method: "POST", body: { name: $("#r-name").value, email: $("#r-email").value, phone: $("#r-phone").value, password: $("#r-pw").value } }); S.me = r.user; S.catalog = null; await sendPendingPlacement(); toast("Bienvenue dans NEXOMIA Academy"); location.hash = f.dataset.next || "#/bienvenue"; }

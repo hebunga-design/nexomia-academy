@@ -107,6 +107,23 @@ async function sendReset(user, token, { byAdmin = false } = {}) {
   return send({ to: user.email, name: user.name, subject: "Ton nouveau mot de passe NEXOMIA Academy", html, text: `Choisis ton nouveau mot de passe (lien valable 48 h) : ${url}` });
 }
 
+// Cours en direct : envoyé à chaque abonné actif du cours (après paiement, ou quand l'équipe publie une session).
+const fmtDay = (d) => new Date(d + "T12:00:00Z").toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long", year: "numeric", timeZone: "UTC" });
+async function sendLive(user, s) {
+  const url = `${baseUrl()}/#/direct`;
+  const rows = String(s.schedule || "").split("\n").map((x) => x.trim()).filter(Boolean);
+  const html = layout({ preheader: `Ton accès au cours en direct : ${s.title}`, title: `Ton cours en direct : ${s.title}`, userId: null,
+    body: p(`Bonjour ${esc(first(user.name))}, ton abonnement te donne accès au cours en direct <b>${esc(s.title)}</b>${s.level ? ` (niveau ${esc(s.level)})` : ""}.`)
+      + p(`<b>Dates :</b> du ${esc(fmtDay(s.starts_on))} au ${esc(fmtDay(s.ends_on))}.`)
+      + (rows.length ? p("<b>Horaires</b> (heure de Lubumbashi) :") + `<ul style="margin:0 0 12px;padding-left:20px;font-size:16px;line-height:1.7">${rows.map((r) => `<li>${esc(r)}</li>`).join("")}</ul>` : "")
+      + (s.link ? p(`<b>Lien pour rejoindre les séances :</b><br><a href="${esc(s.link)}" style="color:#2F7D32;word-break:break-all">${esc(s.link)}</a>`) : p("Le lien de connexion te sera envoyé avant la première séance."))
+      + (s.notes ? p(esc(s.notes).replace(/\n/g, "<br>")) : "")
+      + p(`<span style="color:#56646E;font-size:14px">Ce lien est personnel à la classe : ne le partage pas en dehors. Entre deux séances, révise avec les leçons audio de l'Academy. Tu retrouves aussi ces informations à tout moment dans l'application, rubrique « Cours en direct ».</span>`),
+    cta: s.link ? "Rejoindre le cours en direct" : "Voir le cours en direct", ctaUrl: s.link || url });
+  return send({ to: user.email, name: user.name, subject: `Ton accès au cours en direct : ${s.title}`, html,
+    text: `Cours en direct : ${s.title}\nDu ${fmtDay(s.starts_on)} au ${fmtDay(s.ends_on)}\n${rows.join("\n")}\nLien : ${s.link || "envoyé avant la première séance"}\n${s.notes || ""}` });
+}
+
 async function sendGift(orderId) {
   const o = one("SELECT o.id, o.gift_to, u.id AS uid, u.name, u.email FROM orders o JOIN users u ON u.id = o.user_id WHERE o.id = ?", orderId);
   const g = one("SELECT code, courses FROM gift_codes WHERE order_id = ?", orderId);
@@ -186,4 +203,4 @@ function startScheduler() {
 }
 function status() { return { provider: provider(), from: sender(), recipients: recipients().length, lastWeek: getSetting("mail:weekly", null), job }; }
 
-module.exports = { sendGift, provider, send, sendWelcome, sendCertificate, sendReset, sendWeekly, runWeekly, startScheduler, status, checkUnsub, unsubUrl };
+module.exports = { sendLive, sendGift, provider, send, sendWelcome, sendCertificate, sendReset, sendWeekly, runWeekly, startScheduler, status, checkUnsub, unsubUrl };

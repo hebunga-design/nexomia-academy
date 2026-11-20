@@ -693,3 +693,12 @@ footer a{color:var(--muted);font-weight:700}
 
 /* Application Android : pas de prix ni d'achat (règle de paiement Google Play) */
 html[data-app] a[href^="#/abonnements"], html[data-app] a[href^="#/cadeau"], html[data-app] [data-subscribe], html[data-app] .pricetag, html[data-app] .price, html[data-app] .app-hide{display:none!important}
+
+/* Cours en direct */
+.livebanner{display:flex;gap:12px;align-items:center;padding:14px 16px;margin:0 0 18px;border-radius:14px;background:var(--navy);color:#fff;text-decoration:none}
+.livebanner small{opacity:.8}
+.livedot{width:12px;height:12px;border-radius:50%;background:#E5484D;box-shadow:0 0 0 4px rgba(229,72,77,.25);flex:none}
+@media (prefers-reduced-motion:no-preference){.livedot{animation:livepulse 1.6s ease-in-out infinite}}
+@keyframes livepulse{50%{box-shadow:0 0 0 8px rgba(229,72,77,0)}}
+.liverows{margin:8px 0 0;padding-left:20px;line-height:1.8}
+.liveaccess{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-top:18px}

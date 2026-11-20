@@ -269,6 +269,26 @@ function tx(fn) {
   try { const r = fn(); db.exec("COMMIT"); return r; }
   catch (e) { try { db.exec("ROLLBACK"); } catch {} throw e; }
 }
+// Cours en direct (classes en ligne) : réservés aux abonnés actifs du cours.
+db.exec(`CREATE TABLE IF NOT EXISTS live_sessions (
+  id INTEGER PRIMARY KEY,
+  course_id INTEGER NOT NULL REFERENCES courses(id) ON DELETE CASCADE,
+  title TEXT NOT NULL,
+  level TEXT NOT NULL DEFAULT '',
+  starts_on TEXT NOT NULL,
+  ends_on TEXT NOT NULL,
+  schedule TEXT NOT NULL DEFAULT '',
+  link TEXT NOT NULL DEFAULT '',
+  notes TEXT NOT NULL DEFAULT '',
+  active INTEGER NOT NULL DEFAULT 1,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE TABLE IF NOT EXISTS live_notified (
+  session_id INTEGER NOT NULL REFERENCES live_sessions(id) ON DELETE CASCADE,
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  sent_at TEXT NOT NULL DEFAULT (datetime('now')),
+  PRIMARY KEY (session_id, user_id)
+);`);
 function getSetting(key, fallback) {
   const r = one("SELECT value FROM settings WHERE key = ?", key);
   return r ? JSON.parse(r.value) : fallback;
