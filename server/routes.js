@@ -11,6 +11,7 @@ const { pricing, totalFor, validatePricing } = require("./pricing");
 const L = require("./learning");
 const Mail = require("./mail");
 const Live = require("./live");
+const Classroom = require("./classroom");
 const PLACEMENT = { anglais: require("./courses/anglais/placement") };
 
 const r = createRouter();
@@ -795,12 +796,26 @@ r.post("/api/admin/users/:id/grant", async (ctx) => {
 });
 
 // ---------- Cours en direct ----------
-const liveOut = (s, unlocked) => ({ id: s.id, title: s.title, level: s.level, starts_on: s.starts_on, ends_on: s.ends_on, schedule: s.schedule, notes: s.notes, unlocked, link: unlocked ? s.link : null, has_link: !!s.link });
+const liveOut = (s, unlocked) => ({ id: s.id, title: s.title, level: s.level, starts_on: s.starts_on, ends_on: s.ends_on, schedule: s.schedule, notes: s.notes, unlocked, link: unlocked ? s.link : null, has_link: !!s.link, in_app: Classroom.enabled() });
+const isTeacher = (u) => !!u && A.RANK[u.role] >= A.RANK.coach;
 // Sessions en cours ou à venir, pour tous les cours ; le lien n'est donné qu'aux abonnés actifs du cours.
 r.get("/api/live", (ctx) => {
   const rows = all(`SELECT s.*, c.slug, c.title AS course_title FROM live_sessions s JOIN courses c ON c.id = s.course_id
     WHERE s.active = 1 AND s.ends_on >= ? AND c.status = 'published' ORDER BY s.starts_on`, Live.today());
-  ok(ctx, { sessions: rows.map((s) => ({ ...liveOut(s, !!ctx.user && Live.hasSub(ctx.user.id, s.course_id)), course: { id: s.course_id, slug: s.slug, title: s.course_title } })) });
+  ok(ctx, { sessions: rows.map((s) => ({ ...liveOut(s, !!ctx.user && (isTeacher(ctx.user) || Live.hasSub(ctx.user.id, s.course_id))), course: { id: s.course_id, slug: s.slug, title: s.course_title } })) });
+});
+// Entrer dans la classe virtuelle intégrée : jeton personnel, formateur = modérateur.
+r.get("/api/live/:id/join", (ctx) => {
+  A.requireUser(ctx);
+  if (!Classroom.enabled()) throw new HttpError(404, "La classe intégrée n’est pas encore activée. Utilise le lien du cours.");
+  const s = one("SELECT * FROM live_sessions WHERE id = ? AND active = 1", Number(ctx.params.id));
+  if (!s) throw new HttpError(404, "Session introuvable.");
+  const staff = isTeacher(ctx.user);
+  if (!staff && !Live.hasSub(ctx.user.id, s.course_id)) throw new HttpError(402, "La classe est réservée aux abonnés du cours.");
+  if (!staff && s.ends_on < Live.today()) throw new HttpError(410, "Cette session est terminée.");
+  const room = Classroom.roomFor(s.id);
+  audit(ctx.user.id, "live_join", { id: s.id });
+  ok(ctx, { domain: Classroom.domain, room: `${Classroom.appId()}/${room}`, jwt: Classroom.token(ctx.user, room, staff), script: `https://${Classroom.domain}/${Classroom.appId()}/external_api.js`, title: s.title, moderator: staff, name: ctx.user.name });
 });
 const liveInput = (b) => {
   const d = (x) => (/^\d{4}-\d{2}-\d{2}$/.test(String(x || "")) ? String(x) : null);
@@ -814,7 +829,7 @@ const liveInput = (b) => {
 r.get("/api/admin/live", (ctx) => {
   admin(ctx);
   const rows = all(`SELECT s.*, c.title AS course_title, (SELECT COUNT(*) FROM live_notified n WHERE n.session_id = s.id) AS notified FROM live_sessions s JOIN courses c ON c.id = s.course_id ORDER BY s.starts_on DESC`);
-  ok(ctx, { sessions: rows.map((s) => ({ ...s, subscribers: Live.subscribersCount(s.course_id) })), mail: Mail.provider() });
+  ok(ctx, { sessions: rows.map((s) => ({ ...s, subscribers: Live.subscribersCount(s.course_id) })), mail: Mail.provider(), inApp: Classroom.enabled() });
 });
 r.post("/api/admin/live", async (ctx) => {
   admin(ctx);

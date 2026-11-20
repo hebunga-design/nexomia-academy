@@ -189,12 +189,13 @@ const routes = [
   [/^#\/parcours$/, vDash, "auth"], [/^#\/abonnements$/, vSubs], [/^#\/connexion$/, vLogin], [/^#\/inscription$/, vRegister],
   [/^#\/reinitialiser\/([\w-]+)$/, vReset], [/^#\/recuperation$/, vRecover], [/^#\/studio$/, vStudio, "creator"], [/^#\/studio\/(\d+)$/, vStudioCourse, "creator"],
   [/^#\/admin$/, vAdmin, "admin"],
-  [/^#\/test-niveau\/([\w-]+)$/, vPlacement], [/^#\/bienvenue$/, vWelcome, "auth"], [/^#\/certificat\/([\w-]+)$/, vCertificate], [/^#\/revision$/, vReview, "auth"], [/^#\/suggestions$/, vSuggestions], [/^#\/grammaire$/, () => vGrammar("anglais")], [/^#\/lexique(?:\/([\w-]+))?$/, (k) => vLexicon("anglais", k)], [/^#\/examen\/([\w-]+)\/(\w+)$/, vExam, "auth"], [/^#\/cadeau(?:\/([\w-]+))?$/, vGift], [/^#\/mot-de-passe-oublie$/, vForgot], [/^#\/supprimer-compte$/, vDeleteAccount], [/^#\/direct$/, vLive],
+  [/^#\/test-niveau\/([\w-]+)$/, vPlacement], [/^#\/bienvenue$/, vWelcome, "auth"], [/^#\/certificat\/([\w-]+)$/, vCertificate], [/^#\/revision$/, vReview, "auth"], [/^#\/suggestions$/, vSuggestions], [/^#\/grammaire$/, () => vGrammar("anglais")], [/^#\/lexique(?:\/([\w-]+))?$/, (k) => vLexicon("anglais", k)], [/^#\/examen\/([\w-]+)\/(\w+)$/, vExam, "auth"], [/^#\/cadeau(?:\/([\w-]+))?$/, vGift], [/^#\/mot-de-passe-oublie$/, vForgot], [/^#\/supprimer-compte$/, vDeleteAccount], [/^#\/direct$/, vLive], [/^#\/classe\/(\d+)$/, vClass, "auth"],
 ];
 function parseHash() { const h = location.hash || "#/"; const [p, q] = h.split("?"); return { path: p, query: new URLSearchParams(q || "") }; }
 let renderId = 0;
 async function render() {
   const my = ++renderId; S.after = null;
+  if (classApi && !location.hash.startsWith("#/classe/")) { try { classApi.dispose(); } catch {} classApi = null; }
   const { path, query } = parseHash();
   if (!path.startsWith("#/lecon/") && P.data && !P.playing) P.data = null;
   if (path !== "#/abonnements") S.gift = false;
@@ -714,7 +715,8 @@ function liveCard(s, { compact = false } = {}) {
   const when = `Du ${esc(fmtDay(s.starts_on))} au ${esc(fmtDay(s.ends_on))}`;
   if (compact) return `<a class="livebanner" href="#/direct"><span class="livedot" aria-hidden="true"></span><span><b>Cours en direct : ${esc(s.title)}</b><br><small>${when}${s.unlocked ? " · ton lien est prêt" : ""}</small></span></a>`;
   const access = s.unlocked
-    ? (s.link ? `<a class="btn btn-primary" href="${esc(s.link)}" target="_blank" rel="noopener">Rejoindre le cours en direct</a><button class="btn btn-ghost" data-copy="${esc(s.link)}">Copier le lien</button>` : `<p class="muted">Le lien de connexion sera publié ici et envoyé par e-mail avant la première séance.</p>`)
+    ? (s.in_app ? `<a class="btn btn-primary" href="#/classe/${s.id}">${can("coach") ? "Ouvrir la classe (formateur)" : "Entrer dans la classe"}</a>${s.link ? `<a class="btn btn-ghost" href="${esc(s.link)}" target="_blank" rel="noopener">Lien de secours</a>` : ""}`
+      : s.link ? `<a class="btn btn-primary" href="${esc(s.link)}" target="_blank" rel="noopener">Rejoindre le cours en direct</a><button class="btn btn-ghost" data-copy="${esc(s.link)}">Copier le lien</button>` : `<p class="muted">Le lien de connexion sera publié ici et envoyé par e-mail avant la première séance.</p>`)
     : !S.me ? `<a class="btn btn-primary" href="#/connexion?next=${encodeURIComponent("#/direct")}">Me connecter</a><p class="muted" style="width:100%;font-size:14px">Réservé aux abonnés du cours ${esc(s.course.title)}.</p>`
     : APP ? `<p class="muted">Réservé aux abonnés du cours ${esc(s.course.title)}. Si ton abonnement est actif, le lien apparaît ici automatiquement.</p>`
     : `<button class="btn btn-primary" data-subscribe="${s.course.id}">M’abonner au cours ${esc(s.course.title)}</button><p class="muted" style="width:100%;font-size:14px">Le lien du cours en direct est inclus dans l’abonnement au cours ${esc(s.course.title)}. Dès le paiement, tu le reçois ici et par e-mail.</p>`;
@@ -724,6 +726,31 @@ function liveCard(s, { compact = false } = {}) {
     ${s.notes ? `<p class="muted" style="margin-top:12px;white-space:pre-line">${esc(s.notes)}</p>` : ""}
     <div class="liveaccess">${access}</div></article>`;
 }
+// Classe virtuelle intégrée (Jitsi / 8x8) : la visioconférence s'ouvre dans l'application.
+let classApi = null;
+function loadScript(src) { return new Promise((ok, ko) => { if ([...document.scripts].some((x) => x.src === src)) return ok(); const el = document.createElement("script"); el.src = src; el.onload = ok; el.onerror = () => ko(new Error("Impossible de charger la classe. Vérifie ta connexion internet.")); document.head.appendChild(el); }); }
+async function vClass(id) {
+  if (classApi) { try { classApi.dispose(); } catch {} classApi = null; }
+  let j;
+  try { j = await api(`/api/live/${id}/join`); }
+  catch (e) { return `<a class="back" href="#/direct">${I.back} Cours en direct</a><div class="empty"><h2>Impossible d’entrer dans la classe</h2><p class="muted" style="margin-top:8px">${esc(e.message)}</p></div>`; }
+  S.after = async () => {
+    try {
+      await loadScript(j.script);
+      classApi = new window.JitsiMeetExternalAPI(j.domain, {
+        roomName: j.room, jwt: j.jwt, parentNode: $("#classroom"), width: "100%", height: "100%", lang: "fr",
+        userInfo: { displayName: j.name },
+        configOverwrite: { prejoinPageEnabled: true, startWithVideoMuted: !j.moderator, disableDeepLinking: true, subject: j.title, resolution: 360, constraints: { video: { height: { ideal: 360, max: 480 } } } },
+        interfaceConfigOverwrite: { MOBILE_APP_PROMO: false, SHOW_JITSI_WATERMARK: false },
+      });
+      classApi.addListener("readyToClose", () => { location.hash = "#/direct"; });
+    } catch (e) { const el = $("#classroom"); if (el) el.innerHTML = `<div class="empty"><h2>La classe ne s’est pas chargée</h2><p class="muted" style="margin-top:8px">${esc(e.message)}</p></div>`; }
+  };
+  return `<div class="classhead"><a class="back" href="#/direct" style="margin:0">${I.back} Quitter la classe</a><b>${esc(j.title)}</b>${j.moderator ? `<span class="tag">Formateur</span>` : ""}</div>
+    <div id="classroom" class="classroom" aria-label="Classe virtuelle"><p class="muted" style="padding:20px">Chargement de la classe…</p></div>
+    <p class="muted" style="font-size:13px;margin-top:8px">Astuce : coupe ta caméra si ta connexion est faible ; le son passe mieux. Une heure de classe utilise environ 300 à 700 Mo de données selon la vidéo.</p>`;
+}
+
 async function vLive() {
   const ss = await loadLive();
   return `<p class="eyebrow">NEXOMIA Academy</p><h1 style="font-size:clamp(30px,4vw,44px);margin:8px 0">Cours en direct</h1>
@@ -1363,7 +1390,7 @@ async function vStudioCourse(id) {
 let adminTab = "overview";
 let liveEdit = null;
 async function adminLive() {
-  const [{ sessions, mail }, cat] = [await api("/api/admin/live"), await loadCatalog()];
+  const [{ sessions, mail, inApp }, cat] = [await api("/api/admin/live"), await loadCatalog()];
   const e = liveEdit ? sessions.find((x) => x.id === liveEdit) || {} : {};
   const en = cat.find((c) => c.slug === "anglais");
   return `<div class="card"><h3 style="font-size:20px">${e.id ? "Modifier la session" : "Nouvelle session en direct"}</h3>
@@ -1383,7 +1410,8 @@ async function adminLive() {
     </form></div>
     <h3 style="font-size:20px;margin:24px 0 10px">Sessions</h3>
     ${sessions.length ? `<div class="slist">${sessions.map((x) => `<div class="sitem" style="align-items:flex-start;flex-wrap:wrap;gap:10px"><div style="min-width:0;flex:1"><b>${esc(x.title)}</b> <span class="status ${x.active ? "st-pub" : "st-draft"}">${x.active ? "Visible" : "Masquée"}</span><br><small class="muted">${esc(x.course_title)} · du ${fmtD(x.starts_on)} au ${fmtD(x.ends_on)} · ${x.link ? "lien renseigné" : "<b>pas encore de lien</b>"} · e-mail reçu par ${x.notified} / ${x.subscribers} abonné${x.subscribers > 1 ? "s" : ""} actif${x.subscribers > 1 ? "s" : ""}</small></div>
-      <div style="display:flex;gap:6px;flex-wrap:wrap"><button class="btn btn-ghost btn-sm" data-liveedit="${x.id}">Modifier</button>${mail ? `<button class="btn btn-ghost btn-sm" data-livenotify="${x.id}">Envoyer aux abonnés</button><button class="btn btn-ghost btn-sm" data-livenotify="${x.id}" data-resend="1">Renvoyer à tous</button>` : ""}<button class="btn btn-ghost btn-sm" data-livedel="${x.id}">Supprimer</button></div></div>`).join("")}</div>` : `<p class="muted">Aucune session pour le moment.</p>`}
+      <div style="display:flex;gap:6px;flex-wrap:wrap">${inApp ? `<a class="btn btn-primary btn-sm" href="#/classe/${x.id}">Ouvrir la classe</a>` : ""}<button class="btn btn-ghost btn-sm" data-liveedit="${x.id}">Modifier</button>${mail ? `<button class="btn btn-ghost btn-sm" data-livenotify="${x.id}">Envoyer aux abonnés</button><button class="btn btn-ghost btn-sm" data-livenotify="${x.id}" data-resend="1">Renvoyer à tous</button>` : ""}<button class="btn btn-ghost btn-sm" data-livedel="${x.id}">Supprimer</button></div></div>`).join("")}</div>` : `<p class="muted">Aucune session pour le moment.</p>`}
+    <div class="note" style="margin-top:12px">${inApp ? "Classe virtuelle intégrée : <b>activée</b>. Les abonnés entrent dans la classe directement depuis l’application ; le lien externe reste un lien de secours." : "Classe virtuelle intégrée : <b>pas encore activée</b> (variables JAAS_APP_ID, JAAS_KID et JAAS_PRIVATE_KEY dans Railway). En attendant, renseigne un lien Google Meet ou Zoom."}</div>
     ${mail ? "" : `<div class="note" style="margin-top:12px">L’envoi d’e-mails n’est pas configuré : les abonnés verront quand même le lien dans l’application.</div>`}`;
 }
 

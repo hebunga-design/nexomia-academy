@@ -18,8 +18,8 @@ const SECURITY_HEADERS = {
   "X-Content-Type-Options": "nosniff",
   "Referrer-Policy": "strict-origin-when-cross-origin",
   "X-Frame-Options": "DENY",
-  "Permissions-Policy": "camera=(), geolocation=(), microphone=(self)",
-  "Content-Security-Policy": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data:; media-src 'self' blob:; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'",
+  "Permissions-Policy": "camera=(self \"https://8x8.vc\"), geolocation=(), microphone=(self \"https://8x8.vc\"), display-capture=(self \"https://8x8.vc\"), fullscreen=(self \"https://8x8.vc\")",
+  "Content-Security-Policy": "default-src 'self'; script-src 'self' https://8x8.vc; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data:; media-src 'self' blob:; connect-src 'self'; frame-src https://8x8.vc; frame-ancestors 'none'; base-uri 'self'; form-action 'self'",
 };
 
 function baseUrlOf(req) {

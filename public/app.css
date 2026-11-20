@@ -702,3 +702,6 @@ html[data-app] a[href^="#/abonnements"], html[data-app] a[href^="#/cadeau"], htm
 @keyframes livepulse{50%{box-shadow:0 0 0 8px rgba(229,72,77,0)}}
 .liverows{margin:8px 0 0;padding-left:20px;line-height:1.8}
 .liveaccess{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-top:18px}
+.classhead{display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-bottom:10px}
+.classroom{width:100%;height:calc(100dvh - 210px);min-height:420px;border-radius:16px;overflow:hidden;background:#0E1820;border:1px solid var(--line)}
+@media (max-width:700px){.classroom{height:calc(100dvh - 190px);border-radius:10px}}
