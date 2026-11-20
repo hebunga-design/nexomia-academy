@@ -256,11 +256,23 @@ function priceBlock() {
       <a class="btn btn-ghost" style="margin-top:10px;width:100%" href="#/abonnements?offrir=1">🎁 Offrir un abonnement</a></div>
   </div>`;
 }
+/* ================= Scènes d'accueil ================= */
+// Chaque grande page s'ouvre sur une « scène » : une photo (Admin → Photos) baignée d'une lumière de fin de journée.
+// Sans photo, la scène dessine un ciel de crépuscule sur Lubumbashi.
+function greet() { const h = new Date().getHours(); return h < 5 ? "Bonsoir" : h < 12 ? "Bonjour" : h < 18 ? "Bon après-midi" : "Bonsoir"; }
+function scene(slot, inner, { size = "md", cls = "" } = {}) {
+  const ph = (S.photos || {})[slot];
+  return `<section class="scene scene-${size} ${ph ? "has-photo" : "no-photo"} ${cls}">
+    <div class="scene-bg"${ph ? ` style="background-image:url('${esc(ph)}')"` : ""} aria-hidden="true">${ph ? "" : `<span class="sun"></span><span class="hz"></span>`}</div>
+    <div class="scene-light" aria-hidden="true"></div>
+    <div class="scene-in">${inner}</div></section>`;
+}
+
 async function vHome() {
   const courses = await loadCatalog();
   const h = HERO[heroLang];
-  return `<section class="hero"><div>
-      <p class="eyebrow">NEXOMIA Academy · Lubumbashi</p>
+  return `${scene("accueil", `<div class="hero"><div>
+      <p class="eyebrow">${S.me ? `${greet()}, ${esc(S.me.name.split(" ")[0])}` : "NEXOMIA Academy · Lubumbashi"}</p>
       <h1 style="margin-top:12px">Apprends.<br>Produis.<br><em>Transmets.</em></h1>
       <p class="lede">Des cours de langues et de compétences qui mènent à un vrai revenu. Tu écoutes de vraies voix, tu pratiques chaque jour et tu avances avec une équipe à tes côtés.</p>
       <div class="cta">${S.me ? `<a class="btn btn-primary" href="#/parcours">Continuer mon parcours</a>` : `<a class="btn btn-primary" href="#/inscription">Créer mon compte gratuit</a>`}<a class="btn btn-ghost" href="#/cours">Voir les cours</a></div></div>
@@ -270,7 +282,7 @@ async function vHome() {
       <p class="line" id="heroLine">${esc(h.s[0][0])}</p><p class="tr" id="heroTr">${esc(h.s[0][1])}</p>
       <div class="row"><button class="play" id="heroPlay" aria-label="Écouter">${I.play}</button><div class="wave" aria-hidden="true">${wave(34)}</div></div>
       <div class="langs" role="group" aria-label="Langue"><button class="chip" data-hl="en" aria-pressed="${heroLang === "en"}">Anglais</button><button class="chip" data-hl="pt" aria-pressed="${heroLang === "pt"}">Portugais</button></div>
-    </div></section>
+    </div></div>`, { size: "xl" })}
   <div class="trust" aria-label="En bref"><span><b>109</b> leçons d’anglais</span><span><b>A1 → C2 + Pro</b> tous les niveaux</span><span><b>1re leçon</b> gratuite</span><span><b>Certificat</b> à chaque niveau</span></div>
   <section class="sec"><div class="sec-h"><div><p class="eyebrow">Ce que tu obtiens</p><h2>Une méthode complète, pensée pour ton téléphone</h2></div></div>
     <div class="features">
@@ -320,7 +332,7 @@ async function vCatalog() {
   const courses = await loadCatalog(true);
   const fs = ["Tous", ...new Set(courses.map((c) => c.domain))];
   const list = courses.filter((c) => S.filter === "Tous" || c.domain === S.filter);
-  return `<div class="sec-h"><div><p class="eyebrow">${courses.length} cours publiés</p><h2 style="font-size:clamp(30px,4vw,44px)">Choisis ton prochain cours</h2></div></div>
+  return `${scene("cours", `<p class="eyebrow">${courses.length} cours publiés</p><h1>Choisis ton prochain cours</h1><p class="lede">Chaque langue apprise est une porte qui s’ouvre : un emploi, un client, un voyage, une bourse.</p>`)}
     <div class="filters" role="group" aria-label="Domaines">${fs.map((f) => `<button class="chip" data-filter="${esc(f)}" aria-pressed="${S.filter === f}">${esc(f)}</button>`).join("")}</div>
     ${list.length ? `<div class="grid">${list.map(courseCard).join("")}</div>` : `<div class="empty">Aucun cours dans ce domaine pour l’instant.</div>`}`;
 }
@@ -362,7 +374,7 @@ async function vCourse(slug) {
   S.after = () => loadReviews(slug);
   const sub = c.subscribed_until;
   return `<a class="back" href="#/cours">${I.back} Tous les cours</a>
-  <div class="course-hero" style="background:${esc(c.color)}"><div><p class="eyebrow" style="color:#fff;opacity:.8">${esc(c.domain)} · ${esc(c.code)}</p><h1 style="margin:8px 0">${esc(c.title)}</h1><p>${esc(c.level)} · ${lessons.length} leçon${lessons.length > 1 ? "s" : ""}</p></div><span class="big" aria-hidden="true">${esc(c.big)}</span></div>
+  ${scene((S.photos || {})[slug] ? slug : "cours", `<p class="eyebrow">${esc(c.domain)} · ${esc(c.code)}</p><h1>${esc(c.title)}</h1><p class="lede">${esc(c.level)} · ${lessons.length} leçon${lessons.length > 1 ? "s" : ""}${sub ? ` · abonné jusqu’au ${fmtD(sub)}` : " · première leçon gratuite"}</p>`, { cls: "scene-course" })}
   ${c.status !== "published" ? `<div class="review-note">Aperçu équipe : ce cours n’est pas encore publié.</div>` : ""}
   ${(await loadLive()).filter((x) => x.course.id === c.id).map((x) => liveCard(x, { compact: true })).join("")}
   <div class="dash">
@@ -753,8 +765,7 @@ async function vClass(id) {
 
 async function vLive() {
   const ss = await loadLive();
-  return `<p class="eyebrow">NEXOMIA Academy</p><h1 style="font-size:clamp(30px,4vw,44px);margin:8px 0">Cours en direct</h1>
-    <p class="muted" style="max-width:60ch">Des classes en ligne avec un formateur NEXOMIA, à heures fixes. Le lien est inclus dans l’abonnement au cours ; entre deux séances, tu révises avec les leçons audio.</p>
+  return `${scene("direct", `<p class="eyebrow"><span class="livedot" style="display:inline-block;vertical-align:middle;margin-right:8px"></span>En direct avec un formateur</p><h1>Cours en direct</h1><p class="lede">Des classes en ligne à heures fixes, dans l’application. Inclus dans l’abonnement ; entre deux séances, tu révises avec les leçons audio.</p>`)}
     <div style="display:grid;gap:16px;margin-top:20px">${ss.length ? ss.map((s) => liveCard(s)).join("") : `<div class="empty"><h2>Aucun cours en direct pour le moment</h2><p class="muted" style="margin-top:8px">La prochaine session sera annoncée ici et par e-mail.</p></div>`}</div>`;
 }
 
@@ -1054,7 +1065,8 @@ async function vDash() {
   const dayL = ["L", "M", "M", "J", "V", "S", "D"];
   const maxXp = Math.max(d.goal, ...d.last7.map((x) => x.xp));
   const earned = d.badges.filter((b) => b.earned).length;
-  return `<div class="dash-hello"><div><p class="eyebrow">Mon parcours</p><h1>${d.completed || d.xp ? "Content de te revoir" : "Bienvenue"}, ${first}.</h1></div>
+  return `${scene("parcours", `<p class="eyebrow">Mon parcours</p><h1>${greet()}, ${first}.</h1><p class="lede">${d.completed || d.xp ? (d.streak > 1 ? `${d.streak} jours de suite. Continue, chaque jour compte.` : "Content de te revoir. Une leçon aujourd’hui, et demain tu seras plus loin.") : "Bienvenue. Ton premier pas commence ici."}</p>`)}
+  <div class="dash-hello"><div></div>
     <div class="hello-stats"><span class="pill streak ${d.streak ? "on" : ""}" title="Jours de suite">🔥 ${d.streak} jour${d.streak > 1 ? "s" : ""}</span><span class="pill xp" title="Points">⚡ ${d.xp.toLocaleString("fr-FR")} pts</span></div></div>
   <div class="dash"><div style="display:grid;gap:18px;min-width:0">
     ${(await loadLive()).filter((x) => x.unlocked).map((x) => liveCard(x, { compact: true })).join("")}
@@ -1282,22 +1294,22 @@ function vForgot() {
 }
 function vLogin(query) {
   const next = query.get("next") || "#/parcours";
-  return `<div class="auth"><p class="eyebrow">Connexion</p><h1>Content de te revoir</h1>
+  return `<div class="authsplit">${scene("connexion", `<blockquote>« Chaque mot appris est une porte qui s’ouvre. »</blockquote><p class="lede">NEXOMIA Academy · Lubumbashi</p>`, { cls: "scene-auth" })}<div class="auth"><p class="eyebrow">Connexion</p><h1>${greet()} !</h1><p class="muted">Content de te revoir. Ta prochaine leçon t’attend.</p>
     <form class="card" id="loginForm" data-next="${esc(next)}"><div class="field"><label for="l-email">Adresse électronique</label><input id="l-email" type="email" autocomplete="email" required></div>
     <div class="field"><label for="l-pw">Mot de passe</label><input id="l-pw" type="password" autocomplete="current-password" required minlength="8"></div>
     <button class="btn btn-primary" style="width:100%">Se connecter</button><p class="err" id="formErr" role="alert"></p>
     <p style="font-size:14px;margin-top:8px;display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap"><a href="#/mot-de-passe-oublie">Mot de passe oublié ?</a><a class="muted" href="#/recuperation">Administrateur ?</a></p></form>
-    <p style="margin-top:16px;text-align:center">Pas encore de compte ? <a href="#/inscription?next=${encodeURIComponent(next)}">Créer un compte gratuit</a></p></div>`;
+    <p style="margin-top:16px;text-align:center">Pas encore de compte ? <a href="#/inscription?next=${encodeURIComponent(next)}">Créer un compte gratuit</a></p></div></div>`;
 }
 function vRegister(query) {
   const next = query.get("next") || "#/bienvenue";
-  return `<div class="auth"><p class="eyebrow">Inscription gratuite</p><h1>Ton parcours commence</h1><p class="muted">Crée ton compte pour enregistrer ta progression. La première leçon de chaque cours est gratuite.</p>
+  return `<div class="authsplit">${scene("connexion", `<blockquote>« Le meilleur moment pour commencer, c’est aujourd’hui. »</blockquote><p class="lede">Première leçon gratuite · certificat à chaque niveau</p>`, { cls: "scene-auth" })}<div class="auth"><p class="eyebrow">Inscription gratuite</p><h1>Ton parcours commence</h1><p class="muted">Crée ton compte pour enregistrer ta progression. La première leçon de chaque cours est gratuite.</p>
     <form class="card" id="registerForm" data-next="${esc(next)}"><div class="field"><label for="r-name">Nom complet</label><input id="r-name" autocomplete="name" required minlength="2"></div>
     <div class="field"><label for="r-email">Adresse électronique</label><input id="r-email" type="email" autocomplete="email" required></div>
     <div class="field"><label for="r-phone">Téléphone (facultatif)</label><input id="r-phone" inputmode="tel" autocomplete="tel" placeholder="+243 81 234 5678"></div>
     <div class="field"><label for="r-pw">Mot de passe</label><input id="r-pw" type="password" autocomplete="new-password" required minlength="8"><span class="hint">8 caractères au moins. Une phrase de trois mots est idéale.</span></div>
     <button class="btn btn-primary" style="width:100%">Créer mon compte</button><p class="err" id="formErr" role="alert"></p></form>
-    <p style="margin-top:16px;text-align:center">Déjà un compte ? <a href="#/connexion?next=${encodeURIComponent(next)}">Se connecter</a></p></div>`;
+    <p style="margin-top:16px;text-align:center">Déjà un compte ? <a href="#/connexion?next=${encodeURIComponent(next)}">Se connecter</a></p></div></div>`;
 }
 function vRecover() {
   return `<div class="auth"><p class="eyebrow">Récupération administrateur</p><h1>Nouveau mot de passe</h1>
@@ -1388,6 +1400,24 @@ async function vStudioCourse(id) {
 
 /* ================= Administration ================= */
 let adminTab = "overview";
+const PHOTO_SLOTS = [["accueil", "Accueil", "La première image que voient les visiteurs."], ["cours", "Catalogue des cours", "Aussi utilisée pour les pages de cours sans photo propre."], ["anglais", "Cours d’anglais", "En haut de la page du cours d’anglais."], ["direct", "Cours en direct", "La page des classes en ligne."], ["parcours", "Mon parcours", "L’accueil de l’apprenant connecté."], ["connexion", "Connexion et inscription", "À côté des formulaires."]];
+function adminPhotos() {
+  return `<div class="card"><h3 style="font-size:20px">Photos d’ambiance</h3>
+    <p class="muted" style="font-size:15px;margin-top:6px;max-width:70ch">Une photo par page. Choisissez des images de vos apprenants, de vos formations ou de Lubumbashi, de préférence en format paysage. L’application les réduit automatiquement (environ 200 Ko) et ajoute une lumière de fin de journée. Pour une photo où l’on reconnaît des personnes, demandez-leur leur accord.</p></div>
+    <div class="photogrid">${PHOTO_SLOTS.map(([k, t, d]) => { const ph = (S.photos || {})[k]; return `<div class="card photoslot"><div class="pthumb"${ph ? ` style="background-image:url('${esc(ph)}')"` : ""}>${ph ? "" : `<span class="muted">Ciel de crépuscule (par défaut)</span>`}</div>
+      <h4 style="margin-top:10px">${t}</h4><p class="muted" style="font-size:13px">${d}</p>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px"><label class="btn btn-primary btn-sm" style="cursor:pointer">${ph ? "Changer" : "Choisir une photo"}<input type="file" accept="image/*" data-photo="${k}" hidden></label>${ph ? `<button class="btn btn-ghost btn-sm" data-photodel="${k}">Retirer</button>` : ""}</div></div>`; }).join("")}</div>`;
+}
+// Réduit l'image dans le navigateur (1600 px, JPEG) pour économiser les données des apprenants.
+function shrinkImage(file, max = 1600) {
+  return new Promise((ok, ko) => {
+    const img = new Image(), url = URL.createObjectURL(file);
+    img.onload = () => { const r = Math.min(1, max / Math.max(img.width, img.height)); const c = document.createElement("canvas"); c.width = Math.round(img.width * r); c.height = Math.round(img.height * r); c.getContext("2d").drawImage(img, 0, 0, c.width, c.height); URL.revokeObjectURL(url); c.toBlob((b) => (b ? ok(b) : ko(new Error("Image illisible."))), "image/jpeg", 0.8); };
+    img.onerror = () => ko(new Error("Ce fichier n’est pas une image lisible."));
+    img.src = url;
+  });
+}
+
 let liveEdit = null;
 async function adminLive() {
   const [{ sessions, mail, inApp }, cat] = [await api("/api/admin/live"), await loadCatalog()];
@@ -1417,7 +1447,7 @@ async function adminLive() {
 
 async function vAdmin() {
   const head = `<p class="eyebrow">Administration</p><h1 style="font-size:clamp(30px,4vw,44px);margin:8px 0 6px">Pilotage NEXOMIA</h1>
-    <div class="tabs" role="group">${[["overview", "Vue d’ensemble"], ["users", "Utilisateurs"], ["orders", "Paiements"], ["feedback", "Retours"], ["live", "Direct"], ["mail", "E-mails"], ["voices", "Voix"]].map(([k, l]) => `<button data-atab="${k}" aria-pressed="${adminTab === k}">${l}</button>`).join("")}</div>`;
+    <div class="tabs" role="group">${[["overview", "Vue d’ensemble"], ["users", "Utilisateurs"], ["orders", "Paiements"], ["feedback", "Retours"], ["live", "Direct"], ["photos", "Photos"], ["mail", "E-mails"], ["voices", "Voix"]].map(([k, l]) => `<button data-atab="${k}" aria-pressed="${adminTab === k}">${l}</button>`).join("")}</div>`;
   if (adminTab === "users") {
     const [{ users, roles }, cat] = [await api(`/api/admin/users?q=${encodeURIComponent(S.adminQ || "")}`), await loadCatalog()];
     return head + `<form id="userSearch" style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap"><input id="u-q" class="chip" style="flex:1;min-width:200px;font-weight:400;padding:10px 14px" placeholder="Rechercher un nom ou une adresse" value="${esc(S.adminQ || "")}"><button class="btn btn-ghost btn-sm">Rechercher</button></form>
@@ -1429,6 +1459,7 @@ async function vAdmin() {
   }
   if (adminTab === "feedback") return head + await adminFeedback();
   if (adminTab === "live") return head + await adminLive();
+  if (adminTab === "photos") return head + adminPhotos();
   if (adminTab === "mail") {
     const m = await api("/api/admin/mail"), j = m.job;
     if (j.running) setTimeout(() => { if (adminTab === "mail" && location.hash === "#/admin") render(); }, 4000);
@@ -1575,6 +1606,7 @@ document.addEventListener("click", async (e) => {
   if (ds.tts) { t.disabled = true; try { await api("/api/admin/tts", { method: "POST", body: { courseId: +ds.tts } }); toast("Génération des voix lancée"); render(); } catch (err) { toast(err.message, true); t.disabled = false; } return; }
   if (ds.ttsstop !== undefined) { await api("/api/admin/tts", { method: "POST", body: { stop: true } }).catch(() => {}); toast("Arrêt demandé"); render(); return; }
   if (ds.atab) { adminTab = ds.atab; return render(); }
+  if (ds.photodel) { try { await api(`/api/admin/photos/${ds.photodel}`, { method: "DELETE" }); delete S.photos[ds.photodel]; toast("Photo retirée"); render(); } catch (err) { toast(err.message, true); } return; }
   if (ds.liveedit) { liveEdit = +ds.liveedit; render(); return; }
   if (ds.livecancel !== undefined) { liveEdit = null; render(); return; }
   if (ds.livedel) {
@@ -1621,6 +1653,18 @@ document.addEventListener("click", async (e) => {
 document.addEventListener("input", (e) => { if (e.target.id === "grq") { GR.q = e.target.value; $("#grlist").innerHTML = grammarList(); } });
 document.addEventListener("change", async (e) => {
   const t = e.target;
+  if (t.dataset.photo) {
+    const f = t.files[0]; if (!f) return;
+    try {
+      toast("Préparation de la photo…");
+      const blob = await shrinkImage(f);
+      const res = await fetch(`/api/admin/photos/${t.dataset.photo}`, { method: "POST", headers: { "Content-Type": "image/jpeg" }, body: blob, credentials: "same-origin" });
+      const j = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(j.error || "L’envoi a échoué.");
+      S.photos = { ...(S.photos || {}), [t.dataset.photo]: j.url }; toast("Photo enregistrée"); render();
+    } catch (err) { toast(err.message, true); }
+    return;
+  }
   if (t.dataset.upload) {
     const f = t.files[0]; if (!f) return;
     if (f.size > 8 * 1024 * 1024) { toast("Fichier trop lourd : 8 Mo maximum.", true); return; }
@@ -1689,6 +1733,7 @@ async function sendPendingPlacement() {
 }
 async function boot(silent) {
   try { const r = await api("/api/me"); S.me = r.user; S.payments = r.payments; if (r.methods) S.methods = r.methods; } catch { S.me = null; }
+  try { S.photos = (await api("/api/photos")).photos || {}; } catch { S.photos = {}; }
   if (S.me && S.me.ui_lang && store.get("uilang", null) === null) S.lang = S.me.ui_lang;
   if (window.NXI18N) NXI18N.setLang(S.lang);
   if (!silent) render();

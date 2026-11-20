@@ -2,7 +2,7 @@
 const fs = require("node:fs");
 const path = require("node:path");
 const crypto = require("node:crypto");
-const { one, all, run, tx, audit, setSetting, AUDIO_DIR } = require("./db");
+const { one, all, run, tx, audit, setSetting, getSetting, AUDIO_DIR, DATA_DIR } = require("./db");
 const { createRouter, readJson, readBody, send, serveFile, HttpError } = require("./http");
 const A = require("./auth");
 const B = require("./billing");
@@ -792,6 +792,39 @@ r.post("/api/admin/users/:id/grant", async (ctx) => {
   run("INSERT INTO periods(user_id, course_id, order_id, start_at, end_at, source) VALUES(?, ?, NULL, ?, ?, 'bourse')", u.id, c.id, start, B.addOneMonth(start));
   audit(ctx.user.id, "scholarship_granted", { user: u.id, course: c.id, reason: b.reason || null });
   Live.onAccess(u.id, [c.id]);
+  ok(ctx, { ok: true });
+});
+
+// ---------- Photos d'ambiance (une par page) ----------
+// L'équipe envoie ses photos depuis Admin → Photos ; elles sont réduites dans le navigateur avant l'envoi.
+const PHOTO_DIR = path.join(DATA_DIR, "photos");
+const PHOTO_SLOTS = ["accueil", "cours", "anglais", "direct", "parcours", "connexion"];
+const photoMap = () => getSetting("photos", {});
+r.get("/api/photos", (ctx) => {
+  const m = photoMap();
+  ok(ctx, { photos: Object.fromEntries(Object.entries(m).filter(([k]) => PHOTO_SLOTS.includes(k)).map(([k, v]) => [k, `/photos/${k}.jpg?v=${v}`])) });
+});
+r.get("/photos/:file", (ctx) => {
+  const f = String(ctx.params.file || "");
+  if (!/^[a-z]+\.jpg$/.test(f) || !PHOTO_SLOTS.includes(f.slice(0, -4))) throw new HttpError(404, "Photo introuvable.");
+  if (!serveFile(ctx.req, ctx.res, path.join(PHOTO_DIR, f), { cache: "public, max-age=31536000, immutable" })) throw new HttpError(404, "Photo introuvable.");
+});
+r.post("/api/admin/photos/:slot", async (ctx) => {
+  admin(ctx);
+  const slot = ctx.params.slot;
+  if (!PHOTO_SLOTS.includes(slot)) throw new HttpError(400, "Emplacement inconnu.");
+  const buf = await readBody(ctx.req, 3 * 1024 * 1024);
+  if (!(buf[0] === 0xff && buf[1] === 0xd8)) throw new HttpError(400, "La photo doit être au format JPEG.");
+  fs.mkdirSync(PHOTO_DIR, { recursive: true });
+  fs.writeFileSync(path.join(PHOTO_DIR, slot + ".jpg"), buf);
+  setSetting("photos", { ...photoMap(), [slot]: Date.now().toString(36) });
+  audit(ctx.user.id, "photo_set", { slot, bytes: buf.length });
+  ok(ctx, { ok: true, url: `/photos/${slot}.jpg?v=${photoMap()[slot]}` });
+});
+r.del("/api/admin/photos/:slot", (ctx) => {
+  admin(ctx);
+  const m = photoMap(); delete m[ctx.params.slot]; setSetting("photos", m);
+  try { fs.unlinkSync(path.join(PHOTO_DIR, ctx.params.slot + ".jpg")); } catch {}
   ok(ctx, { ok: true });
 });
 

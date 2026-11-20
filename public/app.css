@@ -705,3 +705,66 @@ html[data-app] a[href^="#/abonnements"], html[data-app] a[href^="#/cadeau"], htm
 .classhead{display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-bottom:10px}
 .classroom{width:100%;height:calc(100dvh - 210px);min-height:420px;border-radius:16px;overflow:hidden;background:#0E1820;border:1px solid var(--line)}
 @media (max-width:700px){.classroom{height:calc(100dvh - 190px);border-radius:10px}}
+
+/* ================= Scènes d'accueil : lumière de fin de journée sur Lubumbashi =================
+   Une photo (ou un ciel de crépuscule dessiné) sous un voile bleu nuit NEXOMIA, réchauffé par une lumière ambrée basse. */
+:root{ --dusk:#0F1B26; --dusk-2:#1E2D3B; --amber:#F2B45C; --ember:#C9793A; --mist:#E9E2D3 }
+.scene{position:relative;isolation:isolate;overflow:hidden;border-radius:28px;color:#F4EFE6;margin:4px 0 26px;background:var(--dusk);
+  box-shadow:0 30px 60px -34px rgba(15,27,38,.75)}
+.scene-md{min-height:300px}
+.scene-xl{min-height:min(640px,82vh)}
+.scene-bg{position:absolute;inset:-4%;z-index:-2;background-size:cover;background-position:center 35%;filter:saturate(.82) contrast(1.04)}
+@media (prefers-reduced-motion:no-preference){.scene-bg{animation:kenburns 38s ease-in-out infinite alternate}}
+@keyframes kenburns{from{transform:scale(1.02) translate3d(0,0,0)}to{transform:scale(1.1) translate3d(-1.5%,-1%,0)}}
+/* Voile : bleu nuit en haut à gauche (lisibilité du texte), lumière ambrée qui entre en bas à droite, grain photo. */
+.scene-light{position:absolute;inset:0;z-index:-1;pointer-events:none;
+  background:
+    radial-gradient(120% 90% at 92% 105%, rgba(242,180,92,.55) 0%, rgba(201,121,58,.28) 28%, rgba(201,121,58,0) 58%),
+    radial-gradient(60% 50% at 78% 18%, rgba(242,180,92,.16), rgba(242,180,92,0) 70%),
+    linear-gradient(100deg, rgba(10,19,27,.92) 0%, rgba(15,27,38,.78) 38%, rgba(30,45,59,.35) 70%, rgba(30,45,59,.15) 100%),
+    linear-gradient(0deg, rgba(10,19,27,.55), rgba(10,19,27,0) 45%)}
+.scene-light::after{content:"";position:absolute;inset:0;opacity:.16;mix-blend-mode:overlay;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23n)' opacity='.9'/%3E%3C/svg%3E")}
+/* Sans photo : un ciel de crépuscule, un soleil bas et l'horizon. */
+.no-photo .scene-bg{background:
+    radial-gradient(70% 55% at 80% 92%, #F6C77A 0%, #E39A55 18%, rgba(176,98,74,.75) 34%, rgba(84,62,92,.0) 62%),
+    linear-gradient(180deg, #0E1A28 0%, #1B2B40 36%, #3B3A55 62%, #8A5A55 84%, #C98352 100%)}
+.no-photo .sun{position:absolute;right:16%;bottom:9%;width:150px;height:150px;border-radius:50%;
+  background:radial-gradient(circle,#FFE2A8 0%,#F7B964 45%,rgba(247,185,100,0) 72%);filter:blur(2px)}
+.no-photo .hz{position:absolute;left:0;right:0;bottom:0;height:18%;background:linear-gradient(180deg,rgba(14,26,40,0),rgba(14,26,40,.85) 75%)}
+.scene-in{position:relative;padding:clamp(28px,5vw,56px);max-width:720px}
+.scene-xl .scene-in{max-width:none;padding-block:clamp(36px,7vw,80px)}
+.scene .eyebrow{color:var(--amber);letter-spacing:.14em}
+.scene h1{font-size:clamp(34px,5.4vw,62px);font-weight:800;line-height:1.02;color:#FFF8EE;text-wrap:balance;margin-top:10px;text-shadow:0 2px 30px rgba(10,19,27,.45)}
+.scene .lede{color:#E9E2D3;font-size:clamp(16px,1.6vw,19px);max-width:56ch;margin-top:14px;opacity:.94}
+.scene .btn-ghost{color:#FFF8EE;border-color:rgba(255,248,238,.5);background:rgba(255,248,238,.06)}
+.scene .btn-ghost:hover{background:rgba(255,248,238,.14)}
+.scene .btn-primary{box-shadow:0 10px 30px -10px rgba(242,180,92,.55)}
+/* Accueil : le grand titre et la carte d'écoute en verre dépoli */
+.scene .hero{padding:0;gap:clamp(24px,4vw,56px)}
+.scene .hero h1 em{color:var(--amber)}
+.scene .hero .lede{color:#E9E2D3}
+.scene .hero-card{background:rgba(12,22,31,.52);backdrop-filter:blur(14px) saturate(1.2);-webkit-backdrop-filter:blur(14px) saturate(1.2);border:1px solid rgba(255,248,238,.14);box-shadow:0 24px 60px -30px rgba(0,0,0,.7)}
+.scene .hero-card .eyebrow{color:var(--amber)}
+.scene .hero-card .play{background:var(--amber);color:#2A1A08;box-shadow:0 8px 26px -8px rgba(242,180,92,.75)}
+.scene .hero-card .wave i{background:var(--amber)}
+.scene .chip{background:rgba(255,248,238,.08);color:#FFF8EE;border-color:rgba(255,248,238,.25)}
+.scene .chip[aria-pressed="true"]{background:#FFF8EE;color:var(--dusk);border-color:#FFF8EE}
+/* Entrée : une seule apparition douce, au chargement */
+@media (prefers-reduced-motion:no-preference){
+  .scene-in > *{animation:rise .9s cubic-bezier(.2,.7,.2,1) both}
+  .scene-in > *:nth-child(2){animation-delay:.08s}.scene-in > *:nth-child(3){animation-delay:.16s}.scene-in > *:nth-child(4){animation-delay:.24s}}
+@keyframes rise{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:none}}
+/* Connexion / inscription : la scène à côté du formulaire */
+.authsplit{display:grid;grid-template-columns:1.05fr .95fr;gap:clamp(20px,4vw,48px);align-items:stretch;margin-top:8px}
+.authsplit .auth{margin:0;align-self:center;width:100%}
+.scene-auth{margin:0;min-height:520px;display:flex;align-items:flex-end}
+.scene-auth blockquote{margin:0;font-family:var(--f-display);font-size:clamp(26px,3.2vw,40px);font-weight:700;line-height:1.12;color:#FFF8EE;text-wrap:balance}
+@media (max-width:860px){.authsplit{grid-template-columns:1fr}.scene-auth{min-height:220px}.scene-auth blockquote{font-size:24px}}
+@media (max-width:700px){.scene{border-radius:20px;margin-inline:-4px}.scene-md{min-height:240px}.scene-xl{min-height:auto}.no-photo .sun{width:96px;height:96px}}
+/* Admin : vignettes des photos */
+.photogrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:14px;margin-top:14px}
+.pthumb{aspect-ratio:16/9;border-radius:12px;background:linear-gradient(180deg,#1B2B40,#8A5A55 80%,#C98352);background-size:cover;background-position:center;display:grid;place-items:center;text-align:center;padding:10px}
+.pthumb .muted{color:#E9E2D3;font-size:13px}
+.dash-hello:has(> div:empty){justify-content:flex-end;margin-top:-8px}
+.scene .hero-card .motif{opacity:.35}
