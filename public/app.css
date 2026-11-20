@@ -808,3 +808,26 @@ html[data-app] a[href^="#/abonnements"], html[data-app] a[href^="#/cadeau"], htm
 :root[data-theme="dark"] body{background-image:radial-gradient(60vw 50vh at 100% 0%, rgba(255,184,77,.10), transparent 70%),radial-gradient(55vw 55vh at 0% 30%, rgba(79,166,84,.10), transparent 70%),radial-gradient(50vw 50vh at 90% 85%, rgba(122,92,255,.10), transparent 70%)}
 :root[data-theme="dark"] .ribbon .rb1{color:#FFB84D}:root[data-theme="dark"] .ribbon .rb2{color:#A99BFF}
 @media (max-width:700px){.fw{font-size:15px!important;color:rgba(255,236,205,.11)!important}.fw:nth-child(n+7){display:none}}
+
+/* ===== Cartes de cours : une seule couleur, bleu pétrole du soir, avec un filet d'or pour l'excellence =====
+   Les nuances varient d'une carte à l'autre, mais restent dans la même famille. */
+:root{ --petrol-900:#0B2228; --petrol-800:#10303A; --petrol-700:#174250; --petrol-600:#22596A; --petrol-300:#8FB3B8; --petrol-100:#DCEAEA; --gold:#D8B370 }
+.course{background:linear-gradient(165deg,var(--petrol-800) 0%,var(--petrol-900) 100%);border:1px solid rgba(216,179,112,.22);color:var(--petrol-100);
+  box-shadow:0 18px 40px -26px rgba(11,34,40,.8);position:relative;overflow:hidden}
+.course::before{content:"";position:absolute;left:18px;right:18px;top:0;height:2px;background:linear-gradient(90deg,transparent,var(--gold),transparent);opacity:.75}
+.course:hover{transform:translateY(-3px);box-shadow:0 26px 50px -24px rgba(11,34,40,.9);border-color:rgba(216,179,112,.45)}
+.course .cover{background:linear-gradient(135deg,var(--petrol-600),var(--petrol-700) 55%,var(--petrol-800))!important;height:110px;border:1px solid rgba(220,234,234,.08)}
+.course .cover::after{content:"";position:absolute;inset:0;background:radial-gradient(80% 120% at 100% 0%,rgba(216,179,112,.22),transparent 60%)}
+.grid > .course:nth-child(4n+2) .cover{background:linear-gradient(135deg,#2A6676,var(--petrol-700) 55%,var(--petrol-900))!important}
+.grid > .course:nth-child(4n+3) .cover{background:linear-gradient(135deg,#1C4E5C,#123744 55%,var(--petrol-900))!important}
+.grid > .course:nth-child(4n+4) .cover{background:linear-gradient(135deg,#346E7C,#1A4654 55%,var(--petrol-800))!important}
+.course .cover .big{color:transparent;-webkit-text-stroke:1.5px rgba(220,234,234,.75);font-size:64px;top:8px;z-index:1}
+.course .cover .code{background:rgba(11,34,40,.55);color:var(--gold);letter-spacing:.06em;z-index:1;border:1px solid rgba(216,179,112,.3)}
+.course h3{color:#F3F7F6;letter-spacing:-.01em}
+.course .muted{color:var(--petrol-300)!important}
+.course .meta{color:var(--petrol-300)}
+.course .meta[style*="border-top"]{border-top-color:rgba(220,234,234,.12)!important}
+.course .tag{background:rgba(220,234,234,.08);color:var(--petrol-100);border:1px solid rgba(220,234,234,.12)}
+.course .tag.subbed{background:rgba(216,179,112,.16);color:var(--gold);border-color:rgba(216,179,112,.35)}
+.course .pricetag{color:var(--gold);font-weight:800}
+.course .card-rating{color:var(--gold)}
