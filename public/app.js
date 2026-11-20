@@ -259,24 +259,57 @@ function priceBlock() {
 /* ================= Scènes d'accueil ================= */
 // Chaque grande page s'ouvre sur une « scène » : une photo (Admin → Photos) baignée d'une lumière de fin de journée.
 // Sans photo, la scène dessine un ciel de crépuscule sur Lubumbashi.
+// Mots qui flottent dans les scènes sans photo : « bonjour » et les mots de l'apprentissage, dans les langues de la région.
+const WORDS = ["Hello", "Bonjour", "Mbote", "Jambo", "Olá", "Moyo", "Karibu", "Welcome", "Merci", "Thank you", "Asante", "Obrigado", "Dream", "Rêve", "Future", "Avenir", "Learn", "Apprendre", "Grow", "Grandir", "Hope", "Espoir"];
+function floatWords(n = 9) {
+  const out = []; let seed = (location.hash.length * 7 + 3) % WORDS.length;
+  for (let i = 0; i < n; i++) {
+    const w = WORDS[(seed + i * 5) % WORDS.length], x = 40 + ((i * 37 + 11) % 52), y = (i * 23 + 7) % 78, sz = 16 + ((i * 13) % 5) * 9, d = 14 + (i % 4) * 5;
+    out.push(`<span class="fw" style="left:${x}%;top:${y}%;font-size:${sz}px;animation-duration:${d}s;animation-delay:-${i * 2}s">${w}</span>`);
+  }
+  return out.join("");
+}
+// Ruban de mots qui défilent.
+function ribbon() {
+  const items = [["Hello", "en"], ["Bonjour", "fr"], ["Mbote", "ln"], ["Jambo", "sw"], ["Olá", "pt"], ["Moyo", "kg"], ["Karibu", "sw"], ["Welcome", "en"], ["Learn", "en"], ["Apprendre", "fr"], ["Dream", "en"], ["Avenir", "fr"], ["Hope", "en"], ["Grandir", "fr"]];
+  const row = items.map(([w], i) => `<span class="rb${i % 3}">${w}</span><i aria-hidden="true">✦</i>`).join("");
+  return `<div class="ribbon" aria-hidden="true"><div class="ribbon-track">${row}${row}</div></div>`;
+}
 function greet() { const h = new Date().getHours(); return h < 5 ? "Bonsoir" : h < 12 ? "Bonjour" : h < 18 ? "Bon après-midi" : "Bonsoir"; }
 // Photos par défaut (remplaçables dans Admin → Photos).
 const DEFAULT_PHOTOS = { accueil: "/img/scene-accueil.jpg", connexion: "/img/scene-connexion.jpg", parcours: "/img/scene-parcours.jpg" };
 function scene(slot, inner, { size = "md", cls = "" } = {}) {
   const ph = (S.photos || {})[slot] || DEFAULT_PHOTOS[slot];
   return `<section class="scene scene-${size} ${ph ? "has-photo" : "no-photo"} ${cls}">
-    <div class="scene-bg"${ph ? ` style="background-image:url('${esc(ph)}')"` : ""} aria-hidden="true">${ph ? "" : `<span class="sun"></span><span class="hz"></span>`}</div>
+    <div class="scene-bg"${ph ? ` style="background-image:url('${esc(ph)}')"` : ""} aria-hidden="true">${ph ? "" : `<span class="rays"></span>${floatWords()}<span class="hz"></span>`}</div>
     <div class="scene-light" aria-hidden="true"></div>
     <div class="scene-in">${inner}</div></section>`;
 }
 
+let slideTimer = null;
+function startSlides() {
+  clearInterval(slideTimer);
+  if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+  slideTimer = setInterval(() => { const el = $("#slides"); if (!el) { clearInterval(slideTimer); return; } if (el.matches(":hover")) return; showSlide((+(el.dataset.i || 0) + 1) % el.children.length); }, 6500);
+}
+function showSlide(i) {
+  const el = $("#slides"); if (!el) return; el.dataset.i = i;
+  [...el.children].forEach((c, k) => c.classList.toggle("on", k === i));
+  document.querySelectorAll("[data-slide]").forEach((d) => d.classList.toggle("on", +d.dataset.slide === i));
+}
 async function vHome() {
   const courses = await loadCatalog();
+  S.after = () => startSlides();
   const h = HERO[heroLang];
   return `${scene("accueil", `<div class="hero"><div>
       <p class="eyebrow">${S.me ? `${greet()}, ${esc(S.me.name.split(" ")[0])}` : "NEXOMIA Academy · Lubumbashi"}</p>
-      <h1 style="margin-top:12px">Apprends.<br>Produis.<br><em>Transmets.</em></h1>
-      <p class="lede">Des cours de langues et de compétences qui mènent à un vrai revenu. Tu écoutes de vraies voix, tu pratiques chaque jour et tu avances avec une équipe à tes côtés.</p>
+      <div class="slides" id="slides" aria-live="polite">
+        <div class="slide on"><h1>Apprends.<br>Produis.<br><em>Transmets.</em></h1><p class="lede">Des cours de langues et de compétences qui mènent à un vrai revenu. Tu écoutes de vraies voix, tu pratiques chaque jour et tu avances avec une équipe à tes côtés.</p></div>
+        <div class="slide"><h1>Ton anglais<br>ouvre des <em>portes.</em></h1><p class="lede">Un premier emploi, un client à l’étranger, une bourse d’études. 109 leçons, du premier « Hello » jusqu’au discours en public.</p></div>
+        <div class="slide"><h1>Des classes<br><em>en direct.</em></h1><p class="lede">Un formateur NEXOMIA, à heures fixes, dans l’application. Tu poses tes questions, tu parles, tu progresses avec les autres.</p></div>
+        <div class="slide"><h1>Apprendre,<br>c’est aussi <em>donner.</em></h1><p class="lede">Chaque abonnement soutient des jeunes vulnérables de Lubumbashi : orphelins, jeunes sans emploi.</p></div>
+      </div>
+      <div class="dots" role="group" aria-label="Messages">${[0, 1, 2, 3].map((i) => `<button class="dot${i ? "" : " on"}" data-slide="${i}" aria-label="Message ${i + 1}"></button>`).join("")}</div>
       <div class="cta">${S.me ? `<a class="btn btn-primary" href="#/parcours">Continuer mon parcours</a>` : `<a class="btn btn-primary" href="#/inscription">Créer mon compte gratuit</a>`}<a class="btn btn-ghost" href="#/cours">Voir les cours</a></div></div>
     <div class="hero-card" id="heroCard">
       <div class="motif" aria-hidden="true"><span class="m1"></span><span class="m2" style="background:#fff"></span><span class="m2" style="background:#fff"></span><span class="q"><span class="m1"></span><span class="m3"></span><span class="m3"></span><span class="m4"></span></span></div>
@@ -285,6 +318,7 @@ async function vHome() {
       <div class="row"><button class="play" id="heroPlay" aria-label="Écouter">${I.play}</button><div class="wave" aria-hidden="true">${wave(34)}</div></div>
       <div class="langs" role="group" aria-label="Langue"><button class="chip" data-hl="en" aria-pressed="${heroLang === "en"}">Anglais</button><button class="chip" data-hl="pt" aria-pressed="${heroLang === "pt"}">Portugais</button></div>
     </div></div>`, { size: "xl" })}
+  ${ribbon()}
   <div class="trust" aria-label="En bref"><span><b>109</b> leçons d’anglais</span><span><b>A1 → C2 + Pro</b> tous les niveaux</span><span><b>1re leçon</b> gratuite</span><span><b>Certificat</b> à chaque niveau</span></div>
   <section class="sec"><div class="sec-h"><div><p class="eyebrow">Ce que tu obtiens</p><h2>Une méthode complète, pensée pour ton téléphone</h2></div></div>
     <div class="features">
@@ -1068,6 +1102,7 @@ async function vDash() {
   const maxXp = Math.max(d.goal, ...d.last7.map((x) => x.xp));
   const earned = d.badges.filter((b) => b.earned).length;
   return `${scene("parcours", `<p class="eyebrow">Mon parcours</p><h1>${greet()}, ${first}.</h1><p class="lede">${d.completed || d.xp ? (d.streak > 1 ? `${d.streak} jours de suite. Continue, chaque jour compte.` : "Content de te revoir. Une leçon aujourd’hui, et demain tu seras plus loin.") : "Bienvenue. Ton premier pas commence ici."}</p>`)}
+  ${ribbon()}
   <div class="dash-hello"><div></div>
     <div class="hello-stats"><span class="pill streak ${d.streak ? "on" : ""}" title="Jours de suite">🔥 ${d.streak} jour${d.streak > 1 ? "s" : ""}</span><span class="pill xp" title="Points">⚡ ${d.xp.toLocaleString("fr-FR")} pts</span></div></div>
   <div class="dash"><div style="display:grid;gap:18px;min-width:0">
@@ -1608,6 +1643,7 @@ document.addEventListener("click", async (e) => {
   if (ds.tts) { t.disabled = true; try { await api("/api/admin/tts", { method: "POST", body: { courseId: +ds.tts } }); toast("Génération des voix lancée"); render(); } catch (err) { toast(err.message, true); t.disabled = false; } return; }
   if (ds.ttsstop !== undefined) { await api("/api/admin/tts", { method: "POST", body: { stop: true } }).catch(() => {}); toast("Arrêt demandé"); render(); return; }
   if (ds.atab) { adminTab = ds.atab; return render(); }
+  if (ds.slide !== undefined) { showSlide(+ds.slide); startSlides(); return; }
   if (ds.photodel) { try { await api(`/api/admin/photos/${ds.photodel}`, { method: "DELETE" }); delete S.photos[ds.photodel]; toast("Photo retirée"); render(); } catch (err) { toast(err.message, true); } return; }
   if (ds.liveedit) { liveEdit = +ds.liveedit; render(); return; }
   if (ds.livecancel !== undefined) { liveEdit = null; render(); return; }
