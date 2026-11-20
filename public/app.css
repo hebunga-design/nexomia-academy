@@ -25,7 +25,7 @@ body{background:var(--bg);color:var(--ink);font-family:var(--f-body);font-size:1
   background-image:
     radial-gradient(60vw 50vh at 100% 0%, rgba(255,184,77,.16), rgba(255,184,77,0) 70%),
     radial-gradient(55vw 55vh at 0% 30%, rgba(47,125,50,.12), rgba(47,125,50,0) 70%),
-    radial-gradient(50vw 50vh at 90% 85%, rgba(122,92,255,.10), rgba(122,92,255,0) 70%),
+    radial-gradient(50vw 50vh at 90% 85%, rgba(141,186,143,.16), rgba(141,186,143,0) 70%),
     radial-gradient(45vw 40vh at 10% 100%, rgba(255,138,80,.10), rgba(255,138,80,0) 70%);
   background-attachment:fixed}
 h1,h2,h3{font-family:var(--f-display);line-height:1.08;text-wrap:balance;margin:0;letter-spacing:-.01em}
@@ -726,7 +726,7 @@ html[data-app] a[href^="#/abonnements"], html[data-app] a[href^="#/cadeau"], htm
 .scene-light{position:absolute;inset:0;z-index:-1;pointer-events:none;
   background:
     radial-gradient(90% 80% at 100% 100%, rgba(255,184,77,.50) 0%, rgba(255,140,66,.22) 30%, rgba(255,140,66,0) 60%),
-    radial-gradient(55% 60% at 85% 0%, rgba(122,92,255,.22), rgba(122,92,255,0) 70%),
+    radial-gradient(55% 60% at 85% 0%, rgba(141,186,143,.20), rgba(141,186,143,0) 70%),
     linear-gradient(100deg, rgba(8,32,40,.90) 0%, rgba(12,52,52,.70) 34%, rgba(20,70,58,.28) 64%, rgba(20,70,58,.05) 100%),
     linear-gradient(0deg, rgba(8,24,32,.45), rgba(8,24,32,0) 40%)}
 .scene-light::after{content:"";position:absolute;inset:0;opacity:.16;mix-blend-mode:overlay;
@@ -785,7 +785,7 @@ html[data-app] a[href^="#/abonnements"], html[data-app] a[href^="#/cadeau"], htm
 .fw{position:absolute;font-family:var(--f-display);font-weight:800;letter-spacing:-.01em;color:rgba(255,236,205,.16);white-space:nowrap;pointer-events:none;user-select:none}
 @media (prefers-reduced-motion:no-preference){.fw{animation:drift ease-in-out infinite alternate}}
 @keyframes drift{from{transform:translate3d(0,0,0)}to{transform:translate3d(28px,-18px,0)}}
-.fw:nth-child(3n){color:rgba(255,184,77,.22)}.fw:nth-child(4n){color:rgba(190,170,255,.18)}
+.fw:nth-child(3n){color:rgba(255,184,77,.22)}.fw:nth-child(4n){color:rgba(141,186,143,.24)}
 /* Messages qui passent sur l'accueil */
 .slides{position:relative;display:grid}
 .slides .slide{grid-area:1/1;opacity:0;transform:translateY(10px);transition:opacity .9s ease, transform .9s ease;pointer-events:none}
@@ -801,12 +801,12 @@ html[data-app] a[href^="#/abonnements"], html[data-app] a[href^="#/cadeau"], htm
 .ribbon-track{display:flex;align-items:center;gap:22px;width:max-content;font-family:var(--f-display);font-weight:800;font-size:clamp(22px,3vw,34px);letter-spacing:-.01em;white-space:nowrap}
 @media (prefers-reduced-motion:no-preference){.ribbon-track{animation:ribbon 48s linear infinite}}
 @keyframes ribbon{to{transform:translateX(-50%)}}
-.ribbon .rb0{color:var(--green)}.ribbon .rb1{color:#E0892F}.ribbon .rb2{color:#5B4FC4}
+.ribbon .rb0{color:var(--green)}.ribbon .rb1{color:#A8521C}.ribbon .rb2{color:var(--navy)}
 .ribbon i{font-style:normal;font-size:.5em;color:var(--sage)}
 @media (prefers-color-scheme:dark){:root:not([data-theme="light"]) body{background-image:radial-gradient(60vw 50vh at 100% 0%, rgba(255,184,77,.10), transparent 70%),radial-gradient(55vw 55vh at 0% 30%, rgba(79,166,84,.10), transparent 70%),radial-gradient(50vw 50vh at 90% 85%, rgba(122,92,255,.10), transparent 70%)}
-  :root:not([data-theme="light"]) .ribbon .rb1{color:#FFB84D}:root:not([data-theme="light"]) .ribbon .rb2{color:#A99BFF}}
+  :root:not([data-theme="light"]) .ribbon .rb1{color:#FFB84D}:root:not([data-theme="light"]) .ribbon .rb2{color:#C5DCC6}}
 :root[data-theme="dark"] body{background-image:radial-gradient(60vw 50vh at 100% 0%, rgba(255,184,77,.10), transparent 70%),radial-gradient(55vw 55vh at 0% 30%, rgba(79,166,84,.10), transparent 70%),radial-gradient(50vw 50vh at 90% 85%, rgba(122,92,255,.10), transparent 70%)}
-:root[data-theme="dark"] .ribbon .rb1{color:#FFB84D}:root[data-theme="dark"] .ribbon .rb2{color:#A99BFF}
+:root[data-theme="dark"] .ribbon .rb1{color:#FFB84D}:root[data-theme="dark"] .ribbon .rb2{color:#C5DCC6}
 @media (max-width:700px){.fw{font-size:15px!important;color:rgba(255,236,205,.11)!important}.fw:nth-child(n+7){display:none}}
 
 /* ===== Cartes de cours : une seule couleur, bleu pétrole du soir, avec un filet d'or pour l'excellence =====
