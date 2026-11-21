@@ -831,3 +831,33 @@ html[data-app] a[href^="#/abonnements"], html[data-app] a[href^="#/cadeau"], htm
 .course .tag.subbed{background:rgba(216,179,112,.16);color:var(--gold);border-color:rgba(216,179,112,.35)}
 .course .pricetag{color:var(--gold);font-weight:800}
 .course .card-rating{color:var(--gold)}
+
+/* Pour aller plus loin (compléments A1) */
+.xtra{margin-top:18px}
+.xknow{display:flex;gap:12px;background:color-mix(in srgb,var(--gold,#D8B370) 16%,var(--surface));border:1px solid color-mix(in srgb,var(--gold,#D8B370) 45%,transparent);border-radius:12px;padding:12px 14px;margin-bottom:12px}
+.xknow>span{font-size:22px;line-height:1}.xknow p{margin:4px 0 0}
+.xfr{display:block;color:var(--green);font-style:italic;font-size:.92em;margin-top:2px}
+.xsec{border:1px solid var(--line);border-radius:12px;margin:10px 0;overflow:hidden;background:var(--surface)}
+.xsec>summary{list-style:none;cursor:pointer;display:flex;gap:12px;align-items:center;padding:12px 14px}
+.xsec>summary::-webkit-details-marker{display:none}
+.xsec>summary b{display:block}.xsec>summary small{display:block;color:var(--muted);font-size:13px}
+.xsec>summary:after{content:"+";margin-left:auto;font-size:20px;color:var(--muted)}
+.xsec[open]>summary:after{content:"–"}
+.xi{font-size:22px;width:34px;text-align:center}
+.xbody{padding:0 14px 14px}
+.xrow{display:flex;gap:10px;align-items:flex-start;padding:9px 0;border-top:1px solid var(--line)}
+.xrow small{display:block;color:var(--muted);font-size:13px;margin-top:2px}
+.xrow s{color:#B23A2E}
+.xsay{flex:none;width:32px;height:32px;border-radius:50%;border:1px solid var(--line);background:var(--bg,transparent);color:var(--green);cursor:pointer;display:grid;place-items:center}
+.xsay svg{width:16px;height:16px}
+.xgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:10px}
+.xtile{border:1px solid var(--line);border-left:4px solid var(--green);border-radius:10px;padding:10px 12px}
+.xtile.xb{border-left-color:var(--gold,#D8B370)}
+.xtile p{margin:6px 0 0;font-size:14.5px;line-height:1.5}
+.xul{margin:0;padding-left:18px}.xul li{margin:8px 0}
+.xbank{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:8px}
+.xbank button{text-align:left;border:1px solid var(--line);border-radius:10px;padding:8px 10px;background:var(--surface);color:var(--ink);cursor:pointer;font:inherit}
+.xbank small{display:block;color:var(--green);font-style:italic}
+.xread{font-family:Georgia,Cambria,serif;font-size:16.5px;line-height:1.65;margin:0 0 8px}
+.xin summary{cursor:pointer;color:var(--green);font-size:14px;font-weight:600}
+.xq{padding-left:20px;margin:10px 0 0}.xq li{margin:8px 0}

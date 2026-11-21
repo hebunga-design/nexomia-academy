@@ -479,6 +479,7 @@ async function vLesson(id) {
     <div class="player" id="player"></div>
     ${voiceMissing ? `<p class="note">Cet appareil n’a pas de voix pour cette langue. Les phrases sans enregistrement seront lues dès qu’une voix sera disponible, ou quand l’équipe aura ajouté l’audio.</p>` : ""}
     <div class="transcript ${P.showTr ? "" : "hide-tr"}" id="transcript">${l.sentences.map((s, i) => `<button class="sent" data-sent="${i}"><span class="who ${s.speaker === "B" ? "b" : ""}">${s.speaker === "N" ? "♪" : esc(s.speaker)}</span><span style="min-width:0"><span class="t">${esc(s.text)}</span>${s.translation ? `<span class="tr" style="display:block">${esc(s.translation)}</span>` : ""}</span><span class="mini" aria-hidden="true">${I.spk}</span></button>`).join("")}</div>
+    ${l.extras ? extrasHTML(l.extras) : ""}
     ${/^fr/i.test(c.lang) ? "" : `<div class="card speak" id="speak">${speakHTML()}</div>`}
     <div class="card comments" id="comments"><p class="muted">Chargement de la discussion…</p></div>
   </div>
@@ -488,6 +489,25 @@ async function vLesson(id) {
     ${c.slug === "anglais" ? `<div class="reflinks card"><a href="#/grammaire">📘 Toutes les fiches de grammaire</a><a href="#/lexique">🔤 Lexique thématique</a></div>` : ""}
     ${next ? `<a class="btn btn-ghost" href="#/lecon/${next.id}">Leçon suivante : ${esc(next.title)}</a>` : ""}
   </aside></div>`;
+}
+// « Pour aller plus loin » : compléments des fiches de la formation de 21 jours (A1).
+function extrasHTML(x) {
+  const sec = (icon, title, sub, body, open) => `<details class="xsec"${open ? " open" : ""}><summary><span class="xi">${icon}</span><span><b>${title}</b><small>${sub}</small></span></summary><div class="xbody">${body}</div></details>`;
+  const say = (t) => `<button class="xsay" data-say="${esc(t)}" aria-label="Écouter">${I.spk}</button>`;
+  return `<div class="card xtra">
+    <p class="eyebrow">Pour aller plus loin</p><h3 style="font-size:20px;margin:4px 0 6px">Les détails qui font la différence</h3>
+    <p class="muted" style="margin:0 0 12px">Expressions courantes, astuces et particularités de l’anglais réel, en anglais et en français.</p>
+    ${x.know ? `<div class="xknow"><span>💡</span><div><b>Did you know? · Le savais-tu ?</b><p>${esc(x.know.en)}</p><p class="xfr">${esc(x.know.fr)}</p></div></div>` : ""}
+    ${sec("💬", "Expressions courantes", "Ce que disent vraiment les anglophones", `<div class="xexpr">${x.expressions.map((e) => `<div class="xrow">${say(e.en)}<div><b>${esc(e.en)}</b><span class="xfr">${esc(e.fr)}</span><small>${esc(e.when)}</small></div></div>`).join("")}</div>`)}
+    ${sec("🧠", "Petites techniques", "Pour apprendre plus vite", `<div class="xgrid">${x.techniques.map((t, i) => `<div class="xtile"><b>${i + 1}. ${esc(t.t)}</b><span class="xfr">${esc(t.tf)}</span><p>${esc(t.en)}</p><p class="xfr">${esc(t.fr)}</p></div>`).join("")}</div>`)}
+    ${sec("🌍", "Au-delà du cours", "Des particularités que la leçon ne dit pas", `<div class="xgrid">${x.beyond.map((t) => `<div class="xtile xb"><b>${esc(t.t)}</b><span class="xfr">${esc(t.tf)}</span><p>${esc(t.en)}</p><p class="xfr">${esc(t.fr)}</p></div>`).join("")}</div>`)}
+    ${sec("⚠️", "Erreurs fréquentes des francophones", "Ne dites pas… dites plutôt…", `<div class="xmist">${x.mistakes.map((m) => `<div class="xrow"><div><s>${esc(m.wrong)}</s> → <b>${esc(m.right)}</b><small>${esc(m.why)}</small><span class="xfr">${esc(m.fr)}</span></div></div>`).join("")}</div>`)}
+    ${sec("🎎", `Culture : ${esc(x.culture.title)}`, esc(x.culture.fr), `<ul class="xul">${x.culture.points.map((c) => `<li>${esc(c.en)}<span class="xfr">${esc(c.fr)}</span></li>`).join("")}</ul>`)}
+    ${sec("🧺", `Banque de mots : ${esc(x.bank.title[0])}`, esc(x.bank.title[1]), `<div class="xbank">${x.bank.words.map(([e, f]) => `<button data-say="${esc(e)}"><b>${esc(e)}</b><small>${esc(f)}</small></button>`).join("")}</div>`)}
+    ${sec("📖", `Lecture : ${esc(x.reading.title)}`, "Un nouveau texte, avec sa traduction", `<p class="xread">${esc(x.reading.text)}</p>
+      <details class="xin"><summary>Voir la traduction</summary><p class="xfr">${esc(x.reading.fr)}</p></details>
+      <ol class="xq">${x.reading.questions.map(([q, a]) => `<li>${esc(q)} <details class="xin"><summary>Réponse</summary>${esc(a)}</details></li>`).join("")}</ol>`)}
+  </div>`;
 }
 /* ================= Exercices ================= */
 // Les exercices d'écoute rédigés pour la leçon, complétés par des exercices générés

@@ -1,5 +1,6 @@
 // Routes de l'API NEXOMIA Academy.
 const fs = require("node:fs");
+const ENRICH = (() => { try { return require("./courses/anglais/enrich"); } catch { return {}; } })(); // compléments des leçons A1 (fiches de 21 jours)
 const path = require("node:path");
 const crypto = require("node:crypto");
 const { one, all, run, tx, audit, setSetting, getSetting, AUDIO_DIR, DATA_DIR } = require("./db");
@@ -144,6 +145,7 @@ r.get("/api/lessons/:id", (ctx) => {
   const meta = { course: { id: c.id, slug: c.slug, title: c.title, code: c.code, lang: c.lang, color: c.color, status: c.status }, lessons, position: l.position };
   if (!hasAccess(ctx.user, l)) return send(ctx.res, 402, { locked: true, lesson: { id: l.id, title: l.title, position: l.position }, ...meta });
   const full = C.lessonFull(l.id);
+  if (c.slug === "anglais" && l.content_key && ENRICH[l.content_key]) full.extras = ENRICH[l.content_key];
   const p = ctx.user ? one("SELECT completed_at, best_score, last_sentence FROM progress WHERE user_id = ? AND lesson_id = ?", ctx.user.id, l.id) : null;
   ok(ctx, { lesson: full, progress: p, subscribed_until: ctx.user ? B.activeEnd(ctx.user.id, c.id) : null, ...meta });
 });
