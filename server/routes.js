@@ -178,8 +178,9 @@ r.get("/api/audio/:file", (ctx) => {
 // Vidéos promo (TikTok) : état + fichiers.
 r.get("/api/promo-video/status", (ctx) => ok(ctx, { videos: require("./promo").status }));
 r.get("/api/promo-video/:file", (ctx) => {
-  const m = /^nexomia-formation-([1-3])\.mp4$/.exec(ctx.params.file);
-  if (!m || !serveFile(ctx.req, ctx.res, require("./promo").outFile(m[1]), { cache: "public, max-age=3600" })) throw new HttpError(404, "Vidéo introuvable.");
+  const P = require("./promo"), m = /^nexomia-formation-([1-3])\.mp4$/.exec(ctx.params.file);
+  const file = m ? P.outFile(m[1]) : ctx.params.file === "nexomia-presentation.mp3" ? P.explainerFile() : null;
+  if (!file || !serveFile(ctx.req, ctx.res, file, { cache: "public, max-age=3600" })) throw new HttpError(404, "Fichier introuvable.");
 });
 
 // Audio de la page d'accueil (public, voix de Charlie).
