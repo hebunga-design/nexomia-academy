@@ -197,6 +197,7 @@ async function render() {
   const my = ++renderId; S.after = null;
   if (classApi && !location.hash.startsWith("#/classe/")) { try { classApi.dispose(); } catch {} classApi = null; }
   const { path, query } = parseHash();
+  document.body.classList.toggle("in-class", path.startsWith("#/classe/"));
   if (!path.startsWith("#/lecon/") && P.data && !P.playing) P.data = null;
   if (path !== "#/abonnements") S.gift = false;
   paintNav(); paintPlayer();
@@ -223,7 +224,7 @@ async function render() {
     app.innerHTML = `<div class="empty"><p><b>${esc(e.message)}</b></p><p style="margin-top:12px"><button class="btn btn-ghost btn-sm" data-reload>Réessayer</button></p></div>`;
   }
 }
-const footer = () => `<footer><div class="wrap" style="padding:0"><span><b style="color:var(--ink)">NEXOMIA</b> · Former · Créer · Transformer · Lubumbashi, RDC</span><span style="display:flex;gap:16px;flex-wrap:wrap"><a href="#/abonnements?offrir=1">Offrir un abonnement</a><a href="#/cadeau">J’ai un code cadeau</a><a href="#/direct">Cours en direct</a><a href="#/suggestions">Boîte à suggestions</a></span><span class="app-hide">Paiements : M-Pesa · Airtel Money · Orange Money${S.methods.includes("card") ? " · Carte" : ""}</span></div></footer>`;
+const footer = () => `<footer><div class="wrap" style="padding:0"><span><b style="color:var(--ink)">NEXOMIA</b> · Former · Créer · Transformer · Lubumbashi, RDC</span><span style="display:flex;gap:16px;flex-wrap:wrap"><a href="#/abonnements?offrir=1">Offrir un abonnement</a><a href="#/cadeau">J’ai un code cadeau</a><a href="#/direct">Cours en direct</a><a href="#/suggestions">Boîte à suggestions</a><a href="https://chat.whatsapp.com/KFtn2egAlXOKqKG027KP2f" target="_blank" rel="noopener">Groupe WhatsApp</a><a href="tel:+243970842007">Appeler : 097 084 2007</a></span><span class="app-hide">Paiements : M-Pesa · Airtel Money · Orange Money${S.methods.includes("card") ? " · Carte" : ""}</span></div></footer>`;
 
 async function loadCatalog(force) { if (!S.catalog || force) { const d = await api("/api/catalog"); S.catalog = d.courses; S.pricing = d.pricing; } return S.catalog; }
 
@@ -794,7 +795,8 @@ function liveCard(s, { compact = false } = {}) {
     <h2 style="font-size:clamp(24px,3vw,32px);margin:6px 0 4px">${esc(s.title)}</h2><p><b>${when}</b></p>${seats}
     ${rows.length ? `<h3 style="font-size:17px;margin-top:16px">Horaires <small class="muted" style="font-weight:400">(heure de Lubumbashi)</small></h3><ul class="liverows">${rows.map((r) => `<li>${esc(r)}</li>`).join("")}</ul>` : ""}
     ${s.notes ? `<p class="muted" style="margin-top:12px;white-space:pre-line">${esc(s.notes)}</p>` : ""}
-    <div class="liveaccess">${access}</div></article>`;
+    <div class="liveaccess">${access}</div>
+    <p class="muted" style="margin-top:14px;font-size:14px">Questions ? Rejoignez le <a href="https://chat.whatsapp.com/KFtn2egAlXOKqKG027KP2f" target="_blank" rel="noopener">groupe WhatsApp de la formation</a> ou appelez le <a href="tel:+243970842007">097 084 2007</a>.</p></article>`;
 }
 // Classe virtuelle intégrée (Jitsi / 8x8) : la visioconférence s'ouvre dans l'application.
 let classApi = null;

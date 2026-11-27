@@ -863,3 +863,11 @@ html[data-app] a[href^="#/abonnements"], html[data-app] a[href^="#/cadeau"], htm
 .xq{padding-left:20px;margin:10px 0 0}.xq li{margin:8px 0}
 
 .seats{margin:8px 0 0;color:var(--ocre,#A8521C)}
+
+/* Bouton WhatsApp flottant (groupe de formation), visible même sans compte */
+.wa-fab{position:fixed;right:18px;bottom:calc(20px + env(safe-area-inset-bottom,0px));z-index:28;width:56px;height:56px;border-radius:50%;background:#1F8F4E;display:grid;place-items:center;box-shadow:0 6px 18px rgba(0,0,0,.25);transition:transform .15s}
+.wa-fab:hover,.wa-fab:focus-visible{transform:scale(1.07)}
+.wa-fab:focus-visible{outline:3px solid var(--gold,#D8B370);outline-offset:3px}
+@media (max-width:760px){.wa-fab{bottom:calc(84px + env(safe-area-inset-bottom,0px));right:14px;width:52px;height:52px}}
+body.in-class .wa-fab{display:none}
+@media (max-width:760px){body:has(.mini-player) .wa-fab{bottom:calc(148px + env(safe-area-inset-bottom,0px))}}
