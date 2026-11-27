@@ -3,7 +3,15 @@
 // les leçons au démarrage (les abonnements et la progression sont conservés).
 const fs = require("node:fs"), path = require("node:path");
 const extra = (f) => (fs.existsSync(path.join(__dirname, f + ".js")) ? require("./" + f) : []);
-const PLUS = extra("plus"); // leçons ajoutées après l’audit du programme (CECRL + erreurs des francophones)
+const PLUS = extra("plus");
+const LONG = { ...require("./dialogues-a1") }; // dialogues prolongés (environ 2 minutes)
+function lengthen(key, lines) {
+  const x = LONG[key]; if (!x) return lines;
+  const out = []; const at = new Map(x.ins.map(([i, add]) => [i, add]));
+  if (at.has(-1)) out.push(...at.get(-1));
+  lines.forEach((l, i) => { out.push(l); if (at.has(i)) out.push(...at.get(i)); });
+  return out;
+} // leçons ajoutées après l’audit du programme (CECRL + erreurs des francophones)
 const more = (f, lv) => [...extra(f), ...((PLUS && PLUS[lv]) || [])];
 const LEVELS = [
   ["A1 · Débutant", require("./a1"), more("a1x", "A1")],
@@ -48,20 +56,20 @@ const VOICES = {
 };
 const lessons = LEVELS.flatMap(([module, base, more]) => merge(module, base, more).map((l) => ({
   key: l.k || `${module.split("·")[0].trim().toLowerCase()}-${slug(l.t)}`, formerTitles: l.was || [],
-  voices: { A: "f", B: "m", N: "n", ...(VOICES[l.k || `${module.split("·")[0].trim().toLowerCase()}-${slug(l.t)}`] || {}), ...(l.voices || {}) },
+  voices: { A: "f", B: "m", C: "m2", N: "n", ...(VOICES[l.k || `${module.split("·")[0].trim().toLowerCase()}-${slug(l.t)}`] || {}), ...(l.voices || {}), ...((LONG[l.k || `${module.split("·")[0].trim().toLowerCase()}-${slug(l.t)}`] || {}).voices || {}) },
   module, title: l.t, duration_min: l.d, goal: l.goal, notes: l.notes.trim(),
-  sentences: l.s.map(S),
+  sentences: lengthen(l.k || `${module.split("·")[0].trim().toLowerCase()}-${slug(l.t)}`, l.s).map(S),
   vocab: l.v.map(([term, meaning]) => ({ term, meaning })),
   // L'extrait d'écoute pointe toujours vers une phrase entière du dialogue, pour profiter des voix enregistrées.
   questions: l.q.map((q) => { const full = l.s.find(([, t]) => t === q[0]) || l.s.find(([, t]) => t.includes(q[0])); return placeAnswer(full ? [full[1], ...q.slice(1)] : q, (qn++ * 7 + 1) % 5); }),
 })));
 
 module.exports = {
-  VERSION: 6,
+  VERSION: 7,
   slug: "anglais",
   meta: {
     code: "EN", level: "Tous niveaux · A1 à C2", lang: "en-GB",
-    description: "Le parcours complet, du tout premier « Hello » jusqu’au discours en public : 109 leçons audio et histoires, de débutant (A1) à maîtrise (C2), plus un module d’anglais professionnel (mines, douane, santé, banque…), avec grammaire expliquée en français, vocabulaire et exercices d’écoute.",
+    description: "Le parcours complet, du tout premier « Hello » jusqu’au discours en public : 109 leçons audio et histoires (dialogues d’environ 2 minutes au niveau A1), de débutant (A1) à maîtrise (C2), plus un module d’anglais professionnel (mines, douane, santé, banque…), avec grammaire expliquée en français, vocabulaire et exercices d’écoute.",
   },
   lessons,
 };
