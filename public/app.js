@@ -1594,7 +1594,16 @@ async function adminLive() {
 
 async function vAdmin() {
   const head = `<p class="eyebrow">Administration</p><h1 style="font-size:clamp(30px,4vw,44px);margin:8px 0 6px">Pilotage NEXOMIA</h1>
-    <div class="tabs" role="group">${[["overview", "Vue d’ensemble"], ["users", "Utilisateurs"], ["orders", "Paiements"], ["feedback", "Retours"], ["live", "Direct"], ["photos", "Photos"], ["mail", "E-mails"], ["voices", "Voix"]].map(([k, l]) => `<button data-atab="${k}" aria-pressed="${adminTab === k}">${l}</button>`).join("")}</div>`;
+    <div class="tabs" role="group">${[["overview", "Vue d’ensemble"], ["subs", "Abonnés actifs"], ["users", "Utilisateurs"], ["orders", "Paiements"], ["feedback", "Retours"], ["live", "Direct"], ["photos", "Photos"], ["mail", "E-mails"], ["voices", "Voix"]].map(([k, l]) => `<button data-atab="${k}" aria-pressed="${adminTab === k}">${l}</button>`).join("")}</div>`;
+  if (adminTab === "subs") {
+    const { subscriptions: L, sessions } = await api("/api/admin/subscriptions");
+    const days = (d) => Math.max(0, Math.ceil((new Date(d) - Date.now()) / 864e5));
+    const src = { payment: "Paiement", gift: "Cadeau", grant: "Bourse" };
+    return head + `<div class="stats" style="margin-bottom:16px">${[[L.length, "abonnements actifs"], [new Set(L.map((x) => x.user_id)).size, "abonnés"], ...sessions.map((x) => [`${x.taken}/${x.places}`, `places · ${esc(x.title)}`])].map(([n, l]) => `<div class="stat"><b>${n}</b><span>${l}</span></div>`).join("")}</div>
+    ${L.length ? `<div class="table-wrap"><table class="t"><thead><tr><th>Abonné</th><th>Contact</th><th>Cours</th><th>Depuis</th><th>Jusqu’au</th><th>Origine</th><th>Place en direct</th></tr></thead><tbody>
+    ${L.map((x) => `<tr><td><b>${esc(x.name)}</b></td><td>${esc(x.email)}<br><small class="muted">${x.phone ? `<a href="https://wa.me/${esc(x.phone.replace(/\D/g, "").replace(/^0/, "243"))}" target="_blank" rel="noopener">${esc(x.phone)}</a>` : ""}</small></td><td>${esc(x.course)}</td><td>${fmtD(x.since)}</td><td>${fmtD(x.until)}<br><small class="${days(x.until) <= 5 ? "bad" : "muted"}">encore ${days(x.until)} j</small></td><td>${src[x.source] || esc(x.source || "")}</td><td>${x.seats ? `✓ ${esc(x.seats)}` : `<span class="muted">—</span>`}</td></tr>`).join("")}
+    </tbody></table></div>` : `<div class="card"><p class="muted">Aucun abonnement actif pour le moment.</p></div>`}`;
+  }
   if (adminTab === "users") {
     const [{ users, roles }, cat] = [await api(`/api/admin/users?q=${encodeURIComponent(S.adminQ || "")}`), await loadCatalog()];
     return head + `<form id="userSearch" style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap"><input id="u-q" class="chip" style="flex:1;min-width:200px;font-weight:400;padding:10px 14px" placeholder="Rechercher un nom ou une adresse" value="${esc(S.adminQ || "")}"><button class="btn btn-ghost btn-sm">Rechercher</button></form>

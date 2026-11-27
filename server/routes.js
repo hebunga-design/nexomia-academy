@@ -768,6 +768,18 @@ r.get("/api/admin/overview", (ctx) => {
     pricing: pricing(),
   });
 });
+// Abonnements actifs : qui, quel cours, depuis quand, jusqu'à quand, place dans la formation en direct.
+r.get("/api/admin/subscriptions", (ctx) => {
+  admin(ctx);
+  const now = nowIso();
+  const rows = all(`SELECT u.id AS user_id, u.name, u.email, u.phone, c.title AS course, MIN(p.start_at) AS since, MAX(p.end_at) AS until,
+      (SELECT source FROM periods p2 WHERE p2.user_id = p.user_id AND p2.course_id = p.course_id ORDER BY p2.end_at DESC LIMIT 1) AS source,
+      (SELECT GROUP_CONCAT(ls.title, ' · ') FROM live_seats s JOIN live_sessions ls ON ls.id = s.session_id WHERE s.user_id = u.id) AS seats
+    FROM periods p JOIN users u ON u.id = p.user_id JOIN courses c ON c.id = p.course_id
+    GROUP BY p.user_id, p.course_id HAVING MAX(p.end_at) > ? ORDER BY until ASC`, now);
+  const sessions = all(`SELECT ls.id, ls.title, ls.places, (SELECT COUNT(*) FROM live_seats s WHERE s.session_id = ls.id) AS taken FROM live_sessions ls WHERE ls.places > 0 ORDER BY ls.id`);
+  ok(ctx, { subscriptions: rows, sessions });
+});
 r.get("/api/admin/users", (ctx) => {
   admin(ctx);
   const q = "%" + String(ctx.query.get("q") || "").trim() + "%";
