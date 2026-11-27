@@ -179,7 +179,9 @@ r.get("/api/audio/:file", (ctx) => {
 r.get("/api/hero-audio/:file", (ctx) => {
   const T = require("./tts"), f = ctx.params.file;
   const m = /^(en|pt)-([0-2])\.mp3$/.exec(f), w = /^welcome-(fr|en|sw|ln|zh)\.mp3$/.exec(f);
-  const file = m ? T.heroFile(m[1], Number(m[2])) : w ? T.welcomeFile(w[1]) : null;
+  // Une vraie voix enregistrée (public/welcome/<langue>.mp3) passe avant la voix générée.
+  const human = w && path.join(__dirname, "..", "public", "welcome", `${w[1]}.mp3`);
+  const file = m ? T.heroFile(m[1], Number(m[2])) : w ? (fs.existsSync(human) ? human : T.welcomeFile(w[1])) : null;
   if (!file || !serveFile(ctx.req, ctx.res, file, { cache: "public, max-age=86400" })) throw new HttpError(404, "Audio introuvable.");
 });
 

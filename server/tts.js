@@ -118,10 +118,10 @@ const WELCOME = {
   fr: ["Bienvenue chez NEXOMIA ! Nous sommes ravis que tu sois là. Chez nous, on parle plusieurs langues : apprends, pratique et grandis avec nous.", "eleven_multilingual_v2"],
   en: ["Welcome to NEXOMIA! We’re so happy you’re here. We speak many languages: learn, practise and grow with us.", "eleven_multilingual_v2"],
   sw: ["Karibu NEXOMIA! Tunafurahi sana kuwa uko hapa. Tunazungumza lugha nyingi: jifunze, fanya mazoezi na ukue pamoja nasi.", "eleven_v3"],
-  ln: ["Boyei malamu na NEXOMIA! Tosepeli mingi ete ozali awa. Tolobaka nkota ebele: yekola, mesana mpe kola elongo na biso.", "eleven_v3"],
+  ln: ["Boye malamu na NEXOMIA ! Tosepeli mingi denge ozali awa.", "eleven_v3"],
   zh: ["欢迎来到 NEXOMIA！我们很高兴你在这里。我们说多种语言：和我们一起学习、练习、成长。", "eleven_multilingual_v2"],
 };
-const welcomeFile = (lang) => path.join(HERO_DIR, `${HERO_VOICE}-welcome-${lang}.mp3`);
+const welcomeFile = (lang) => path.join(HERO_DIR, `${HERO_VOICE}-welcome-${lang}${lang === "ln" ? "-v2" : ""}.mp3`);
 async function ensureHero() {
   if (provider() !== "elevenlabs") return;
   fs.mkdirSync(HERO_DIR, { recursive: true });

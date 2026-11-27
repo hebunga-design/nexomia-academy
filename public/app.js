@@ -239,7 +239,7 @@ const WELCOME = [
   ["fr", "Français", "fr-FR", "Bienvenue chez NEXOMIA ! Nous sommes ravis que tu sois là. Chez nous, on parle plusieurs langues : apprends, pratique et grandis avec nous."],
   ["en", "English", "en-GB", "Welcome to NEXOMIA! We’re so happy you’re here. We speak many languages: learn, practise and grow with us."],
   ["sw", "Kiswahili", "sw-KE", "Karibu NEXOMIA! Tunafurahi sana kuwa uko hapa. Tunazungumza lugha nyingi: jifunze, fanya mazoezi na ukue pamoja nasi."],
-  ["ln", "Lingala", "fr-FR", "Boyei malamu na NEXOMIA! Tosepeli mingi ete ozali awa. Tolobaka nkota ebele: yekola, mesana mpe kola elongo na biso."],
+  ["ln", "Lingala", "fr-FR", "Boye malamu na NEXOMIA ! Tosepeli mingi denge ozali awa."],
   ["zh", "中文", "zh-CN", "欢迎来到 NEXOMIA！我们很高兴你在这里。我们说多种语言：和我们一起学习、练习、成长。"],
 ];
 let welcomeRun = 0;
