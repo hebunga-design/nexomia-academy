@@ -31,8 +31,8 @@ function voiceType(speaker, voicesJson) {
   return v[speaker] || DEFAULT_ROLES[speaker] || "f";
 }
 
-async function synthElevenLabs(text, lang, speaker) {
-  const voice = process.env[`ELEVENLABS_VOICE_${speaker.toUpperCase()}`] || ELEVEN_DEFAULT[speaker] || ELEVEN_DEFAULT.f;
+async function synthElevenLabs(text, lang, speaker, voiceId) {
+  const voice = voiceId || process.env[`ELEVENLABS_VOICE_${speaker.toUpperCase()}`] || ELEVEN_DEFAULT[speaker] || ELEVEN_DEFAULT.f;
   const base = process.env.ELEVENLABS_BASE_URL || "https://api.elevenlabs.io";
   const res = await fetch(`${base}/v1/text-to-speech/${encodeURIComponent(voice)}?output_format=mp3_44100_64`, {
     method: "POST",
@@ -105,4 +105,22 @@ async function runJob(courseId, userId) {
 }
 function stopJob() { job.stopped = true; return status(); }
 
-module.exports = { provider, status, runJob, stopJob };
+// Phrases d'accueil (page d'accueil) : voix de Charlie, générées une seule fois puis servies à tous.
+const HERO = {
+  en: ["Hello! My name is Amani.", "Hi Amani, I’m Grace. Nice to meet you.", "I’m from Lubumbashi. And you?"],
+  pt: ["Olá! Eu me chamo Amani.", "Prazer, eu sou a Grace.", "Eu sou de Lubumbashi, na RDC."],
+};
+const HERO_VOICE = process.env.ELEVENLABS_VOICE_HOME || "IKne3meq5aSn9XLyUdCD"; // Charlie
+const HERO_DIR = path.join(AUDIO_DIR, "hero");
+const heroFile = (lang, i) => path.join(HERO_DIR, `${HERO_VOICE}-${lang}-${i}.mp3`);
+async function ensureHero() {
+  if (provider() !== "elevenlabs") return;
+  fs.mkdirSync(HERO_DIR, { recursive: true });
+  for (const [lang, lines] of Object.entries(HERO)) for (let i = 0; i < lines.length; i++) {
+    if (fs.existsSync(heroFile(lang, i))) continue;
+    try { const buf = await synthElevenLabs(lines[i], lang, "m", HERO_VOICE); if (buf.length > 500) fs.writeFileSync(heroFile(lang, i), buf); }
+    catch (e) { console.error(`[tts] accueil ${lang}-${i} : ${e.message}`); return; }
+  }
+}
+
+module.exports = { provider, status, runJob, stopJob, ensureHero, heroFile };

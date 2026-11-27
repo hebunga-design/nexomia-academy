@@ -355,13 +355,13 @@ async function vHome() {
 }
 async function heroPlay() {
   const card = $("#heroCard"); if (!card) return;
-  if (card.classList.contains("playing")) { heroRun++; Speech.stop(); card.classList.remove("playing"); $("#heroPlay").innerHTML = I.play; return; }
+  if (card.classList.contains("playing")) { heroRun++; stopAudio(); card.classList.remove("playing"); $("#heroPlay").innerHTML = I.play; return; }
   const my = ++heroRun, h = HERO[heroLang];
   card.classList.add("playing"); $("#heroPlay").innerHTML = I.pause;
   for (let i = 0; i < h.s.length && heroRun === my; i++) {
     if (!$("#heroLine")) return;
     $("#heroLine").textContent = h.s[i][0]; $("#heroTr").textContent = h.s[i][1];
-    await Speech.speak(h.s[i][0], h.lang, 0.95); await sleep(300);
+    await playSentence({ text: h.s[i][0], audio: `/api/hero-audio/${heroLang}-${i}.mp3` }, h.lang, 1); await sleep(300);
   }
   if (heroRun === my && $("#heroCard")) { $("#heroCard").classList.remove("playing"); $("#heroPlay").innerHTML = I.play; }
 }
@@ -1632,7 +1632,7 @@ document.addEventListener("click", async (e) => {
   if (ds.theme !== undefined) { const r = document.documentElement; const dark = r.dataset.theme ? r.dataset.theme === "dark" : matchMedia("(prefers-color-scheme: dark)").matches; r.dataset.theme = dark ? "light" : "dark"; store.set("theme", r.dataset.theme); return; }
   if (ds.logout !== undefined) { await api("/api/auth/logout", { method: "POST" }).catch(() => {}); S.me = null; S.catalog = null; stopPlay(); P.data = null; location.hash = "#/"; render(); return; }
   if (t.id === "heroPlay") return heroPlay();
-  if (ds.hl) { heroRun++; Speech.stop(); heroLang = ds.hl; return render(); }
+  if (ds.hl) { heroRun++; stopAudio(); heroLang = ds.hl; return render(); }
   if (ds.filter) { S.filter = ds.filter; return render(); }
   if (ds.subscribe) { e.preventDefault(); const id = +ds.subscribe; if (!S.cart.includes(id)) S.cart.push(id); store.set("cart", S.cart); location.hash = "#/abonnements"; return; }
   // Lecteur

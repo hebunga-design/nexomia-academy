@@ -175,6 +175,13 @@ r.get("/api/audio/:file", (ctx) => {
   if (!serveFile(ctx.req, ctx.res, path.join(AUDIO_DIR, f), { cache: "private, max-age=604800" })) throw new HttpError(404, "Audio introuvable.");
 });
 
+// Audio de la page d'accueil (public, voix de Charlie).
+r.get("/api/hero-audio/:file", (ctx) => {
+  const m = /^(en|pt)-([0-2])\.mp3$/.exec(ctx.params.file);
+  if (!m) throw new HttpError(404, "Audio introuvable.");
+  if (!serveFile(ctx.req, ctx.res, require("./tts").heroFile(m[1], Number(m[2])), { cache: "public, max-age=86400" })) throw new HttpError(404, "Audio introuvable.");
+});
+
 // ---------- Progression ----------
 r.post("/api/progress", async (ctx) => {
   A.requireUser(ctx);
