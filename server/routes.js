@@ -27,6 +27,15 @@ function hasAccess(user, lesson) {
   if (isStaff(user)) return true;
   return !!B.activeEnd(user.id, lesson.course_id);
 }
+// Progression guidée : dans chaque niveau, une leçon ne s'ouvre que si la précédente est validée (80 %).
+// La première leçon de chaque niveau reste ouverte (après le test de niveau, on peut commencer en B1).
+function blocker(user, lesson) {
+  if (!user || isStaff(user)) return null;
+  if (one("SELECT 1 FROM progress WHERE user_id = ? AND lesson_id = ? AND completed_at IS NOT NULL", user.id, lesson.id)) return null;
+  const prev = one("SELECT id, title, position FROM lessons WHERE course_id = ? AND module = ? AND position < ? ORDER BY position DESC LIMIT 1", lesson.course_id, lesson.module || "", lesson.position);
+  if (!prev) return null;
+  return one("SELECT 1 FROM progress WHERE user_id = ? AND lesson_id = ? AND completed_at IS NOT NULL", user.id, prev.id) ? null : prev;
+}
 function courseVisible(user, c) { return c && (c.status === "published" || isStaff(user)); }
 
 // ---------- Santé ----------
@@ -131,6 +140,8 @@ r.get("/api/courses/:slug", (ctx) => {
     const p = ctx.user ? one("SELECT completed_at, best_score FROM progress WHERE user_id = ? AND lesson_id = ?", ctx.user.id, l.id) : null;
     return { ...l, locked: !hasAccess(ctx.user, l), completed: !!(p && p.completed_at), score: p ? p.best_score : null };
   });
+  // Verrou de progression (calculé en mémoire : une seule passe par niveau).
+  if (ctx.user && !isStaff(ctx.user)) { const lastBy = {}; for (const l of lessons) { const prev = lastBy[l.module || ""]; if (prev && !prev.completed && !l.completed) l.seq_locked = { id: prev.id, title: prev.title, position: prev.position }; lastBy[l.module || ""] = l; } }
   const certificates = ctx.user ? all("SELECT code, module FROM certificates WHERE user_id = ? AND course_id = ?", ctx.user.id, c.id) : [];
   const modules = {};
   if (ctx.user) for (const m of [...new Set(lessons.map((l) => l.module).filter(Boolean))]) modules[m] = L.moduleStatus(ctx.user.id, c.id, m);
@@ -144,6 +155,8 @@ r.get("/api/lessons/:id", (ctx) => {
   const lessons = all("SELECT id, position, title, module FROM lessons WHERE course_id = ? ORDER BY position", c.id);
   const meta = { course: { id: c.id, slug: c.slug, title: c.title, code: c.code, lang: c.lang, color: c.color, status: c.status }, lessons, position: l.position };
   if (!hasAccess(ctx.user, l)) return send(ctx.res, 402, { locked: true, lesson: { id: l.id, title: l.title, position: l.position }, ...meta });
+  const blk = blocker(ctx.user, l);
+  if (blk) return send(ctx.res, 423, { seq_locked: true, requires: blk, lesson: { id: l.id, title: l.title, position: l.position }, ...meta });
   const full = C.lessonFull(l.id);
   if (c.slug === "anglais" && l.content_key && ENRICH[l.content_key]) full.extras = ENRICH[l.content_key];
   const p = ctx.user ? one("SELECT completed_at, best_score, last_sentence FROM progress WHERE user_id = ? AND lesson_id = ?", ctx.user.id, l.id) : null;
@@ -168,6 +181,7 @@ r.post("/api/progress", async (ctx) => {
   const b = await readJson(ctx.req);
   const l = one("SELECT * FROM lessons WHERE id = ?", Number(b.lessonId));
   if (!l || !hasAccess(ctx.user, l)) throw new HttpError(403, "Leçon non accessible.");
+  if (blocker(ctx.user, l)) throw new HttpError(423, "Valide d’abord la leçon précédente.");
   const score = Math.max(0, Math.min(100, Math.round(Number(b.score) || 0)));
   const passed = b.completed === true && score >= 80;
   run(`INSERT INTO progress(user_id, lesson_id, best_score, completed_at, last_sentence, updated_at) VALUES(?, ?, ?, ?, ?, datetime('now'))

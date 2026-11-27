@@ -117,6 +117,7 @@ async function playFrom(i) {
     await playSentence(sents[P.idx], d.course.lang, P.rate);
     if (P.run !== my) return;
     P.listened += (Date.now() - t0) / 1000;
+    (P.heard || (P.heard = new Set())).add(P.idx); paintSteps();
     if (P.repeat) { await sleep(Math.min(7000, Math.max(1200, (Date.now() - t0) * 1.1))); if (P.run !== my) return; } else await sleep(300);
     if (P.loop) continue;
     if (P.mode === "phrase") { P.idx = Math.min(P.idx + 1, sents.length - 1); P.playing = false; paintPlayer(); return; }
@@ -421,9 +422,9 @@ async function vCourse(slug) {
         ? `<a class="exambanner ready" href="#/examen/${esc(slug)}/${esc(mod.split("·")[0].trim())}"><span class="cert-lv">${esc(mod.split("·")[0].trim())}</span><span><b>Examen de fin de niveau débloqué</b><br><small>16 questions · 70 % pour obtenir ton certificat</small></span></a>`
         : `<p class="exambanner"><span class="muted">Examen et certificat ${esc(mod.split("·")[0].trim())} : encore ${modules[mod].total - modules[mod].done} leçon${modules[mod].total - modules[mod].done > 1 ? "s" : ""} à valider</span></p>`) : ""}
       ${certOf(mod) ? `<a class="certitem" style="margin-bottom:10px" href="#/certificat/${esc(certOf(mod).code)}"><span class="cert-lv">${esc(mod.split("·")[0].trim())}</span><span><b>Niveau validé</b><br><small class="muted">Voir et télécharger mon certificat</small></span></a>` : ""}` : ""}
-      <div class="llist">${ls.map((l) => `<a class="lrow ${l.completed ? "done" : ""} ${l.locked ? "locked" : ""}" href="#/lecon/${l.id}" style="text-decoration:none;color:inherit">
-      <span class="num">${l.completed ? "✓" : l.position}</span><span style="min-width:0"><b>${esc(l.title)}</b><br><span class="st">${l.duration_min} min${l.position === 1 && !sub ? " · gratuite" : ""}${l.score !== null && l.score !== undefined ? ` · meilleur score ${l.score} %` : ""}</span></span>
-      <span class="st">${l.locked ? "Abonnement" : l.completed ? "Terminée" : "Écouter"}</span></a>`).join("")}</div></section>`).join("")}
+      <div class="llist">${ls.map((l) => `<a class="lrow ${l.completed ? "done" : ""} ${l.locked || l.seq_locked ? "locked" : ""} ${l.seq_locked ? "seq" : ""}" href="#/lecon/${l.id}" style="text-decoration:none;color:inherit">
+      <span class="num">${l.completed ? "✓" : l.seq_locked ? "🔒" : l.position}</span><span style="min-width:0"><b>${esc(l.title)}</b><br><span class="st">${l.duration_min} min${l.position === 1 && !sub ? " · gratuite" : ""}${l.score !== null && l.score !== undefined ? ` · meilleur score ${l.score} %` : ""}</span></span>
+      <span class="st">${l.locked ? "Abonnement" : l.completed ? "Terminée" : l.seq_locked ? `Après la leçon ${l.seq_locked.position}` : "Commencer"}</span></a>`).join("")}</div></section>`).join("")}
       <section class="card reviews" id="reviews"></section></div>
     <div class="card" style="align-self:start"><p class="muted">${esc(c.description)}</p>
       ${slug === "anglais" ? `<div class="reflinks"><a href="#/grammaire">📘 Fiches de grammaire</a><a href="#/lexique">🔤 Lexique thématique</a><a href="#/test-niveau/anglais">🎯 Test de niveau</a></div>` : ""}
@@ -437,6 +438,15 @@ async function vLesson(id) {
   let d;
   try { d = await api(`/api/lessons/${id}`); }
   catch (e) {
+    if (e.status === 423) {
+      stopPlay(); const x = e.data, r = x.requires;
+      return `<a class="back" href="#/cours/${esc(x.course.slug)}">${I.back} ${esc(x.course.title)}</a>
+      <div class="lesson-head"><p class="eyebrow">${esc(x.course.code)} · Leçon ${x.position} sur ${x.lessons.length}</p><h1>${esc(x.lesson.title)}</h1></div>
+      <div class="lock" style="max-width:620px">${motif()}
+        <h2 style="font-size:28px">🔒 Cette leçon est encore fermée</h2>
+        <p class="muted" style="margin:10px auto 0;max-width:46ch">Pour avancer pas à pas, valide d’abord la leçon ${r.position} : <b>${esc(r.title)}</b>. Il faut écouter le dialogue, répéter au micro et obtenir au moins 80 % aux exercices.</p>
+        <a class="btn btn-primary" style="margin-top:18px" href="#/lecon/${r.id}">Aller à la leçon ${r.position}</a></div>`;
+    }
     if (e.status === 402 && APP) {
       stopPlay(); const x = e.data;
       return `<a class="back" href="#/cours/${esc(x.course.slug)}">${I.back} ${esc(x.course.title)}</a>
@@ -459,7 +469,7 @@ async function vLesson(id) {
     }
     throw e;
   }
-  if (!P.data || P.data.lesson.id !== d.lesson.id) { stopPlay(); P.idx = Math.min(d.progress ? d.progress.last_sentence : 0, d.lesson.sentences.length - 1); }
+  if (!P.data || P.data.lesson.id !== d.lesson.id) { stopPlay(); P.idx = Math.min(d.progress ? d.progress.last_sentence : 0, d.lesson.sentences.length - 1); P.heard = new Set(); P.passed = null; P.pendingFinish = false; }
   P.data = d;
   const l = d.lesson, c = d.course;
   const next = d.lessons.find((x) => x.position === l.position + 1);
@@ -470,14 +480,16 @@ async function vLesson(id) {
   const audioCount = l.sentences.filter((s) => s.audio).length;
   return `<a class="back" href="#/cours/${esc(c.slug)}">${I.back} ${esc(c.title)}</a>
   <div class="lesson"><div style="min-width:0">
-    <div class="lesson-head"><p class="eyebrow">${l.module ? esc(l.module) + " · " : esc(c.code) + " · "}Leçon ${l.position} sur ${d.lessons.length} · ${l.duration_min} min</p><h1>${esc(l.title)}</h1>
-      <p class="muted">Écoute chaque phrase, répète-la à voix haute, puis vérifie que tu as compris.</p>
+    <div class="lesson-head">${(() => { const inMod = d.lessons.filter((x) => (x.module || "") === (l.module || "")); const k = inMod.findIndex((x) => x.id === l.id) + 1;
+      return `<div class="lnum"><span class="lnum-badge">Leçon ${k}</span><span class="muted">${l.module ? esc(l.module) : esc(c.code)} · ${k} sur ${inMod.length} · ${l.duration_min} min</span></div>`; })()}
+      <h1>${esc(l.title)}</h1>${l.goal ? `<p class="lgoal">🎯 ${esc(l.goal)}</p>` : ""}
+      <div class="lsteps" id="steps">${stepsHTML()}</div>
       <p style="margin-top:10px;display:flex;gap:10px;align-items:center;flex-wrap:wrap">
         ${d.subscribed_until ? `<span class="tag subbed">Abonné jusqu’au ${fmtD(d.subscribed_until)}</span>` : l.position === 1 ? `<span class="tag">Leçon d’essai gratuite</span><button class="btn btn-ghost btn-sm" data-subscribe="${c.id}">S’abonner · ${money((S.pricing || { tiers: [5] }).tiers[0])} / mois</button>` : ""}
         ${audioCount && "caches" in window ? `<button class="btn btn-ghost btn-sm" data-offline="${l.id}">${I.dl} Télécharger pour écouter hors connexion</button>` : ""}
       </p></div>
-    ${l.notes ? `<div class="notes-card"><p class="eyebrow">À retenir</p>${richNotes(l.notes)}</div>` : ""}
-    <div class="player" id="player"></div>
+    ${l.notes ? `<div class="notes-card" id="sec-notes"><p class="eyebrow">À retenir</p>${richNotes(l.notes)}</div>` : ""}
+    <span id="sec-listen" class="anchor"></span><div class="player" id="player"></div>
     ${voiceMissing ? `<p class="note">Cet appareil n’a pas de voix pour cette langue. Les phrases sans enregistrement seront lues dès qu’une voix sera disponible, ou quand l’équipe aura ajouté l’audio.</p>` : ""}
     <div class="transcript ${P.showTr ? "" : "hide-tr"}" id="transcript">${l.sentences.map((s, i) => `<button class="sent" data-sent="${i}"><span class="who ${s.speaker === "B" ? "b" : ""}">${s.speaker === "N" ? "♪" : esc(s.speaker)}</span><span style="min-width:0"><span class="t">${esc(s.text)}</span>${s.translation ? `<span class="tr" style="display:block">${esc(s.translation)}</span>` : ""}</span><span class="mini" aria-hidden="true">${I.spk}</span></button>`).join("")}</div>
     ${l.extras ? extrasHTML(l.extras) : ""}
@@ -495,7 +507,7 @@ async function vLesson(id) {
 function extrasHTML(x) {
   const sec = (icon, title, sub, body, open) => `<details class="xsec"${open ? " open" : ""}><summary><span class="xi">${icon}</span><span><b>${title}</b><small>${sub}</small></span></summary><div class="xbody">${body}</div></details>`;
   const say = (t) => `<button class="xsay" data-say="${esc(t)}" aria-label="Écouter">${I.spk}</button>`;
-  return `<div class="card xtra">
+  return `<div class="card xtra" id="sec-xtra">
     <p class="eyebrow">Pour aller plus loin</p><h3 style="font-size:20px;margin:4px 0 6px">Les détails qui font la différence</h3>
     <p class="muted" style="margin:0 0 12px">Expressions courantes, astuces et particularités de l’anglais réel, en anglais et en français.</p>
     ${x.know ? `<div class="xknow"><span>💡</span><div><b>Did you know? · Le savais-tu ?</b><p>${esc(x.know.en)}</p><p class="xfr">${esc(x.know.fr)}</p></div></div>` : ""}
@@ -510,6 +522,31 @@ function extrasHTML(x) {
       <ol class="xq">${x.reading.questions.map(([q, a]) => `<li>${esc(q)} <details class="xin"><summary>Réponse</summary>${esc(a)}</details></li>`).join("")}</ol>`)}
   </div>`;
 }
+/* ================= Étapes de la leçon ================= */
+// 1 Écouter tout le dialogue · 2 Répéter au micro · 3 Exercices (80 %) · 4 Pour aller plus loin (facultatif).
+const speakNeed = () => { const d = P.data; if (!d || /^fr/i.test(d.course.lang) || !SR) return 0; return Math.min(3, speakSentences().length); };
+function stepState() {
+  const d = P.data; if (!d) return null;
+  const n = d.lesson.sentences.length, done = !!(d.progress && d.progress.completed_at);
+  const heard = (P.heard ? P.heard.size : 0), listen = done || heard >= n || (d.progress && d.progress.last_sentence >= n - 1);
+  const need = speakNeed(), speak = done || need === 0 || SP.good.size >= need;
+  const quiz = done || P.passed === true;
+  return { n, heard: Math.min(heard, n), listen, need, good: SP.good.size, speak, quiz, done: done || (listen && speak && quiz) };
+}
+function stepsHTML() {
+  const st = stepState(); if (!st) return "";
+  const items = [
+    ["sec-listen", "1", "Écouter", st.listen ? "Fait" : `${st.heard} / ${st.n} phrases`, st.listen],
+    ["speak", "2", "Répéter et parler", st.need === 0 ? (SR ? "—" : "Micro indisponible") : st.speak ? "Fait" : `${Math.min(st.good, st.need)} / ${st.need} phrases`, st.speak],
+    ["quiz", "3", "Exercices", st.quiz ? "Validé" : "80 % pour valider", st.quiz],
+  ];
+  const pct = Math.round((items.filter((x) => x[4]).length / items.length) * 100);
+  return `<div class="steps-bar" role="progressbar" aria-valuenow="${pct}" aria-valuemin="0" aria-valuemax="100" aria-label="Progression dans la leçon"><i style="width:${pct}%"></i></div>
+    <ol class="steps-list">${items.map(([id, n, t, sub, ok]) => `<li class="${ok ? "ok" : ""}"><a href="#${id}" data-jump="${id}"><span class="sn">${ok ? "✓" : n}</span><span><b>${t}</b><small>${sub}</small></span></a></li>`).join("")}
+      ${P.data.lesson.extras ? `<li class="opt"><a href="#sec-xtra" data-jump="sec-xtra"><span class="sn">+</span><span><b>Pour aller plus loin</b><small>Facultatif</small></span></a></li>` : ""}</ol>
+    <p class="steps-note">${st.done ? "✅ Leçon validée : la suivante est ouverte." : `Progression : <b>${pct} %</b>. Termine les 3 étapes pour ouvrir la leçon suivante.`}</p>`;
+}
+function paintSteps() { const el = $("#steps"); if (el) el.innerHTML = stepsHTML(); }
 /* ================= Exercices ================= */
 // Les exercices d'écoute rédigés pour la leçon, complétés par des exercices générés
 // à partir du dialogue : mots dans l'ordre, phrase à compléter, dictée.
@@ -601,11 +638,21 @@ function answerItem(ok, fb) { const st = Q.state; st.result = ok; st.fb = fb; st
 function newQuizState() { return { i: 0, correct: 0, picked: null, result: null, fb: "", chosen: [], typed: "", marks: [] }; }
 async function finishLesson() {
   const d = P.data, qs = Q.items;
+  const st0 = stepState();
+  if (st0 && !st0.speak) {
+    P.pendingFinish = true; paintSteps();
+    toast(`Dernière étape : répète ${st0.need - Math.min(st0.good, st0.need)} phrase(s) au micro pour valider la leçon.`);
+    const el = document.getElementById("speak"); if (el) el.scrollIntoView({ behavior: "smooth", block: "center" });
+    return;
+  }
+  P.pendingFinish = false;
   const score = qs.length ? Math.round((Q.state.correct / qs.length) * 100) : 100;
   stopPlay(); flushListening();
   let passed = score >= 80;
   let res = null;
   if (S.me) { try { res = await api("/api/progress", { method: "POST", body: { lessonId: d.lesson.id, score, correct: Q.state.correct, completed: true, lastSentence: P.idx } }); passed = res.passed; } catch {} }
+  P.passed = passed; if (passed && d.progress) d.progress.completed_at = d.progress.completed_at || new Date().toISOString(); else if (passed) d.progress = { completed_at: new Date().toISOString(), best_score: score, last_sentence: P.idx };
+  paintSteps();
   const next = d.lessons.find((x) => x.position === d.lesson.position + 1);
   const cols = ["var(--green)", "var(--navy)", "var(--sage)", "var(--pale)"];
   $("#layer").innerHTML = `<div class="overlay" id="ov"><div class="celebrate" role="dialog" aria-modal="true" aria-labelledby="ct">
@@ -675,6 +722,8 @@ function startMic() {
     SP.result = best;
     if (best.score >= 0.8 && !SP.good.has(SP.i)) {
       SP.good.add(SP.i);
+      paintSteps();
+      if (P.pendingFinish && SP.good.size >= speakNeed()) { P.pendingFinish = false; setTimeout(finishLesson, 900); }
       if (S.me && SP.good.size >= 3 && !SP.sent) { SP.sent = true; api("/api/me/speak", { method: "POST", body: { lessonId: P.data.lesson.id, good: SP.good.size } }).then((r) => r.xp && toast(`+${r.xp} points de prononciation`)).catch(() => {}); }
     }
   };

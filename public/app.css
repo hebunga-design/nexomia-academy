@@ -871,3 +871,20 @@ html[data-app] a[href^="#/abonnements"], html[data-app] a[href^="#/cadeau"], htm
 @media (max-width:760px){.wa-fab{bottom:calc(84px + env(safe-area-inset-bottom,0px));right:14px;width:52px;height:52px}}
 body.in-class .wa-fab{display:none}
 @media (max-width:760px){body:has(.mini-player) .wa-fab{bottom:calc(148px + env(safe-area-inset-bottom,0px))}}
+
+/* Structure de la leçon : numéro, objectif, étapes */
+.lnum{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:6px}
+.lnum-badge{background:var(--green);color:#fff;font-family:var(--f-display);font-weight:800;font-size:15px;padding:5px 12px;border-radius:999px}
+.lgoal{margin:6px 0 0;font-size:16px}
+.lsteps{margin-top:16px;background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:14px}
+.steps-bar{height:8px;border-radius:99px;background:var(--surface-2);overflow:hidden}
+.steps-bar i{display:block;height:100%;background:var(--green);border-radius:99px;transition:width .4s}
+.steps-list{list-style:none;margin:12px 0 0;padding:0;display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px}
+.steps-list a{display:flex;gap:10px;align-items:center;text-decoration:none;color:inherit;border:1px solid var(--line);border-radius:12px;padding:10px 12px;min-height:44px}
+.steps-list .sn{flex:none;width:28px;height:28px;border-radius:50%;display:grid;place-items:center;font-weight:800;background:var(--surface-2);color:var(--ink)}
+.steps-list b{display:block;font-size:14px}.steps-list small{display:block;color:var(--muted);font-size:12.5px}
+.steps-list li.ok a{border-color:var(--green)}.steps-list li.ok .sn{background:var(--green);color:#fff}
+.steps-list li.opt .sn{background:color-mix(in srgb,var(--gold,#D8B370) 30%,var(--surface))}
+.steps-note{margin:10px 2px 0;font-size:14px;color:var(--muted)}
+.anchor{display:block;position:relative;top:-90px;visibility:hidden}
+.lrow.seq .num{background:var(--surface-2)}
