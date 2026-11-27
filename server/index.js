@@ -97,7 +97,7 @@ const server = http.createServer(async (req, res) => {
 
 const seeded = seedIfEmpty();
 const synced = syncBundledContent();
-setTimeout(() => require("./tts").ensureHero().catch(() => {}), 3000);
+setTimeout(() => require("./tts").ensureHero().catch(() => {}).then(() => require("./promo").build()).catch(() => {}), 3000);
 try { require("./live").bootstrap(); } catch (e) { console.error("live bootstrap", e.message); }
 if (synced) console.log(`Cours d'anglais mis à jour : ${synced} leçons`);
 startReconciliation();

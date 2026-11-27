@@ -144,4 +144,4 @@ async function ensureHero() {
   }
 }
 
-module.exports = { provider, status, runJob, stopJob, ensureHero, heroFile, welcomeFile };
+module.exports = { provider, status, runJob, stopJob, ensureHero, heroFile, welcomeFile, synthElevenLabs, HERO_VOICE };

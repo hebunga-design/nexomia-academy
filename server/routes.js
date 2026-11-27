@@ -175,6 +175,13 @@ r.get("/api/audio/:file", (ctx) => {
   if (!serveFile(ctx.req, ctx.res, path.join(AUDIO_DIR, f), { cache: "private, max-age=604800" })) throw new HttpError(404, "Audio introuvable.");
 });
 
+// Vidéos promo (TikTok) : état + fichiers.
+r.get("/api/promo-video/status", (ctx) => ok(ctx, { videos: require("./promo").status }));
+r.get("/api/promo-video/:file", (ctx) => {
+  const m = /^nexomia-formation-([1-3])\.mp4$/.exec(ctx.params.file);
+  if (!m || !serveFile(ctx.req, ctx.res, require("./promo").outFile(m[1]), { cache: "public, max-age=3600" })) throw new HttpError(404, "Vidéo introuvable.");
+});
+
 // Audio de la page d'accueil (public, voix de Charlie).
 r.get("/api/hero-audio/:file", (ctx) => {
   const T = require("./tts"), f = ctx.params.file;
