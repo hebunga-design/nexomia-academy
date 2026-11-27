@@ -831,13 +831,18 @@ r.del("/api/admin/photos/:slot", (ctx) => {
 });
 
 // ---------- Cours en direct ----------
-const liveOut = (s, unlocked) => ({ id: s.id, title: s.title, level: s.level, starts_on: s.starts_on, ends_on: s.ends_on, schedule: s.schedule, notes: s.notes, unlocked, link: unlocked ? s.link : null, has_link: !!s.link, in_app: Classroom.enabled() });
+const liveOut = (s, unlocked, subscribed) => ({ id: s.id, title: s.title, level: s.level, starts_on: s.starts_on, ends_on: s.ends_on, schedule: s.schedule, notes: s.notes, unlocked, subscribed: !!subscribed, link: unlocked ? s.link : null, has_link: !!s.link, in_app: Classroom.enabled(),
+  free: !!s.free, places: s.places || 0, seats_left: s.places ? Math.max(0, s.places - Live.seatsTaken(s.id)) : null });
 const isTeacher = (u) => !!u && A.RANK[u.role] >= A.RANK.coach;
 // Sessions en cours ou à venir, pour tous les cours ; le lien n'est donné qu'aux abonnés actifs du cours.
 r.get("/api/live", (ctx) => {
   const rows = all(`SELECT s.*, c.slug, c.title AS course_title FROM live_sessions s JOIN courses c ON c.id = s.course_id
     WHERE s.active = 1 AND s.ends_on >= ? AND c.status = 'published' ORDER BY s.starts_on`, Live.today());
-  ok(ctx, { sessions: rows.map((s) => ({ ...liveOut(s, !!ctx.user && (isTeacher(ctx.user) || Live.hasSub(ctx.user.id, s.course_id))), course: { id: s.course_id, slug: s.slug, title: s.course_title } })) });
+  ok(ctx, { sessions: rows.map((s) => {
+    const sub = !!ctx.user && Live.hasSub(ctx.user.id, s.course_id);
+    const unlocked = !!ctx.user && (isTeacher(ctx.user) || !!s.free || (sub && Live.seatOf(ctx.user.id, s)));
+    return { ...liveOut(s, unlocked, sub), course: { id: s.course_id, slug: s.slug, title: s.course_title } };
+  }) });
 });
 // Entrer dans la classe virtuelle intégrée : jeton personnel, formateur = modérateur.
 r.get("/api/live/:id/join", (ctx) => {
@@ -846,7 +851,8 @@ r.get("/api/live/:id/join", (ctx) => {
   const s = one("SELECT * FROM live_sessions WHERE id = ? AND active = 1", Number(ctx.params.id));
   if (!s) throw new HttpError(404, "Session introuvable.");
   const staff = isTeacher(ctx.user);
-  if (!staff && !Live.hasSub(ctx.user.id, s.course_id)) throw new HttpError(402, "La classe est réservée aux abonnés du cours.");
+  if (!staff && !s.free && !Live.hasSub(ctx.user.id, s.course_id)) throw new HttpError(402, "La classe est réservée aux abonnés du cours.");
+  if (!staff && !Live.seatOf(ctx.user.id, s)) throw new HttpError(409, "Les places de cette formation sont toutes prises.");
   if (!staff && s.ends_on < Live.today()) throw new HttpError(410, "Cette session est terminée.");
   const room = Classroom.roomFor(s.id);
   audit(ctx.user.id, "live_join", { id: s.id });
@@ -855,7 +861,7 @@ r.get("/api/live/:id/join", (ctx) => {
 const liveInput = (b) => {
   const d = (x) => (/^\d{4}-\d{2}-\d{2}$/.test(String(x || "")) ? String(x) : null);
   const v = { title: String(b.title || "").trim().slice(0, 120), level: String(b.level || "").trim().slice(0, 40), starts_on: d(b.starts_on), ends_on: d(b.ends_on),
-    schedule: String(b.schedule || "").trim().slice(0, 2000), link: String(b.link || "").trim().slice(0, 500), notes: String(b.notes || "").trim().slice(0, 2000), active: b.active === false ? 0 : 1 };
+    schedule: String(b.schedule || "").trim().slice(0, 2000), link: String(b.link || "").trim().slice(0, 500), notes: String(b.notes || "").trim().slice(0, 2000), active: b.active === false ? 0 : 1, free: b.free ? 1 : 0, places: Math.max(0, Math.min(1000, Math.round(Number(b.places) || 0))) };
   if (!v.title || !v.starts_on || !v.ends_on) throw new HttpError(400, "Indique un titre, une date de début et une date de fin.");
   if (v.ends_on < v.starts_on) throw new HttpError(400, "La date de fin doit être après la date de début.");
   if (v.link && !/^https:\/\//.test(v.link)) throw new HttpError(400, "Le lien doit commencer par https:// (par exemple un lien Google Meet).");
@@ -863,7 +869,7 @@ const liveInput = (b) => {
 };
 r.get("/api/admin/live", (ctx) => {
   admin(ctx);
-  const rows = all(`SELECT s.*, c.title AS course_title, (SELECT COUNT(*) FROM live_notified n WHERE n.session_id = s.id) AS notified FROM live_sessions s JOIN courses c ON c.id = s.course_id ORDER BY s.starts_on DESC`);
+  const rows = all(`SELECT s.*, c.title AS course_title, (SELECT COUNT(*) FROM live_notified n WHERE n.session_id = s.id) AS notified, (SELECT COUNT(*) FROM live_seats t WHERE t.session_id = s.id) AS seats FROM live_sessions s JOIN courses c ON c.id = s.course_id ORDER BY s.starts_on DESC`);
   ok(ctx, { sessions: rows.map((s) => ({ ...s, subscribers: Live.subscribersCount(s.course_id) })), mail: Mail.provider(), inApp: Classroom.enabled() });
 });
 r.post("/api/admin/live", async (ctx) => {
@@ -871,7 +877,7 @@ r.post("/api/admin/live", async (ctx) => {
   const b = await readJson(ctx.req), v = liveInput(b);
   const c = one("SELECT id FROM courses WHERE id = ?", Number(b.course_id));
   if (!c) throw new HttpError(404, "Cours introuvable.");
-  const r2 = run("INSERT INTO live_sessions(course_id, title, level, starts_on, ends_on, schedule, link, notes, active) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?)", c.id, v.title, v.level, v.starts_on, v.ends_on, v.schedule, v.link, v.notes, v.active);
+  const r2 = run("INSERT INTO live_sessions(course_id, title, level, starts_on, ends_on, schedule, link, notes, active, places, free) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", c.id, v.title, v.level, v.starts_on, v.ends_on, v.schedule, v.link, v.notes, v.active, v.places, v.free);
   audit(ctx.user.id, "live_created", { id: Number(r2.lastInsertRowid) });
   ok(ctx, { id: Number(r2.lastInsertRowid) });
 });
@@ -880,7 +886,7 @@ r.put("/api/admin/live/:id", async (ctx) => {
   const s = one("SELECT id FROM live_sessions WHERE id = ?", Number(ctx.params.id));
   if (!s) throw new HttpError(404, "Session introuvable.");
   const v = liveInput(await readJson(ctx.req));
-  run("UPDATE live_sessions SET title = ?, level = ?, starts_on = ?, ends_on = ?, schedule = ?, link = ?, notes = ?, active = ? WHERE id = ?", v.title, v.level, v.starts_on, v.ends_on, v.schedule, v.link, v.notes, v.active, s.id);
+  run("UPDATE live_sessions SET title = ?, level = ?, starts_on = ?, ends_on = ?, schedule = ?, link = ?, notes = ?, active = ?, places = ?, free = ? WHERE id = ?", v.title, v.level, v.starts_on, v.ends_on, v.schedule, v.link, v.notes, v.active, v.places, v.free, s.id);
   audit(ctx.user.id, "live_updated", { id: s.id });
   ok(ctx, { ok: true });
 });

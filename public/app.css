@@ -861,3 +861,5 @@ html[data-app] a[href^="#/abonnements"], html[data-app] a[href^="#/cadeau"], htm
 .xread{font-family:Georgia,Cambria,serif;font-size:16.5px;line-height:1.65;margin:0 0 8px}
 .xin summary{cursor:pointer;color:var(--green);font-size:14px;font-weight:600}
 .xq{padding-left:20px;margin:10px 0 0}.xq li{margin:8px 0}
+
+.seats{margin:8px 0 0;color:var(--ocre,#A8521C)}

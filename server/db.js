@@ -289,6 +289,14 @@ CREATE TABLE IF NOT EXISTS live_notified (
   sent_at TEXT NOT NULL DEFAULT (datetime('now')),
   PRIMARY KEY (session_id, user_id)
 );`);
+ensureColumn("live_sessions", "places", "INTEGER NOT NULL DEFAULT 0"); // 0 = sans limite
+ensureColumn("live_sessions", "free", "INTEGER NOT NULL DEFAULT 0"); // 1 = ouverte à tout inscrit, sans abonnement
+db.exec(`CREATE TABLE IF NOT EXISTS live_seats (
+  session_id INTEGER NOT NULL REFERENCES live_sessions(id) ON DELETE CASCADE,
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  taken_at TEXT NOT NULL DEFAULT (datetime('now')),
+  PRIMARY KEY (session_id, user_id)
+);`);
 function getSetting(key, fallback) {
   const r = one("SELECT value FROM settings WHERE key = ?", key);
   return r ? JSON.parse(r.value) : fallback;

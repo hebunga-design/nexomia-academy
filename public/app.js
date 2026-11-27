@@ -782,14 +782,16 @@ function liveCard(s, { compact = false } = {}) {
   const rows = String(s.schedule || "").split("\n").map((x) => x.trim()).filter(Boolean);
   const when = `Du ${esc(fmtDay(s.starts_on))} au ${esc(fmtDay(s.ends_on))}`;
   if (compact) return `<a class="livebanner" href="#/direct"><span class="livedot" aria-hidden="true"></span><span><b>Cours en direct : ${esc(s.title)}</b><br><small>${when}${s.unlocked ? " · ton lien est prêt" : ""}</small></span></a>`;
-  const access = s.unlocked
+  const seats = s.places ? `<p class="seats"><b>${s.seats_left > 0 ? `${s.seats_left} place${s.seats_left > 1 ? "s" : ""} restante${s.seats_left > 1 ? "s" : ""}` : "Complet"}</b> sur ${s.places}</p>` : "";
+  const access = !s.unlocked && s.subscribed && s.places ? `<p class="muted">Les ${s.places} places de cette formation sont prises. Tes leçons restent accessibles dans l’application ; nous te préviendrons pour la prochaine session.</p>`
+    : s.unlocked
     ? (s.in_app ? `<a class="btn btn-primary" href="#/classe/${s.id}">${can("coach") ? "Ouvrir la classe (formateur)" : "Entrer dans la classe"}</a>${s.link ? `<a class="btn btn-ghost" href="${esc(s.link)}" target="_blank" rel="noopener">Lien de secours</a>` : ""}`
       : s.link ? `<a class="btn btn-primary" href="${esc(s.link)}" target="_blank" rel="noopener">Rejoindre le cours en direct</a><button class="btn btn-ghost" data-copy="${esc(s.link)}">Copier le lien</button>` : `<p class="muted">Le lien de connexion sera publié ici et envoyé par e-mail avant la première séance.</p>`)
-    : !S.me ? `<a class="btn btn-primary" href="#/connexion?next=${encodeURIComponent("#/direct")}">Me connecter</a><p class="muted" style="width:100%;font-size:14px">Réservé aux abonnés du cours ${esc(s.course.title)}.</p>`
+    : !S.me ? `<a class="btn btn-primary" href="#/connexion?next=${encodeURIComponent("#/direct")}">Me connecter</a><p class="muted" style="width:100%;font-size:14px">${s.free ? "Gratuit : il suffit d’avoir un compte (l’inscription est gratuite)." : `Réservé aux abonnés du cours ${esc(s.course.title)}.`}</p>`
     : APP ? `<p class="muted">Réservé aux abonnés du cours ${esc(s.course.title)}. Si ton abonnement est actif, le lien apparaît ici automatiquement.</p>`
     : `<button class="btn btn-primary" data-subscribe="${s.course.id}">M’abonner au cours ${esc(s.course.title)}</button><p class="muted" style="width:100%;font-size:14px">Le lien du cours en direct est inclus dans l’abonnement au cours ${esc(s.course.title)}. Dès le paiement, tu le reçois ici et par e-mail.</p>`;
-  return `<article class="card livecard"><p class="eyebrow">${esc(s.course.title)}${s.level ? ` · ${esc(s.level)}` : ""}</p>
-    <h2 style="font-size:clamp(24px,3vw,32px);margin:6px 0 4px">${esc(s.title)}</h2><p><b>${when}</b></p>
+  return `<article class="card livecard"><p class="eyebrow">${esc(s.course.title)}${s.level ? ` · ${esc(s.level)}` : ""}${s.free ? " · Gratuit" : ""}</p>
+    <h2 style="font-size:clamp(24px,3vw,32px);margin:6px 0 4px">${esc(s.title)}</h2><p><b>${when}</b></p>${seats}
     ${rows.length ? `<h3 style="font-size:17px;margin-top:16px">Horaires <small class="muted" style="font-weight:400">(heure de Lubumbashi)</small></h3><ul class="liverows">${rows.map((r) => `<li>${esc(r)}</li>`).join("")}</ul>` : ""}
     ${s.notes ? `<p class="muted" style="margin-top:12px;white-space:pre-line">${esc(s.notes)}</p>` : ""}
     <div class="liveaccess">${access}</div></article>`;
@@ -1489,8 +1491,10 @@ async function adminLive() {
       <div class="two"><div class="field"><label for="lv-start">Premier jour</label><input id="lv-start" type="date" required value="${esc(e.starts_on || "")}"></div>
       <div class="field"><label for="lv-end">Dernier jour</label><input id="lv-end" type="date" required value="${esc(e.ends_on || "")}"></div></div>
       <div class="field"><label for="lv-sched">Horaires (une ligne par créneau, heure de Lubumbashi)</label><textarea id="lv-sched" rows="4" placeholder="Lundi au vendredi : 18 h 00 – 19 h 30&#10;Samedi : 10 h 00 – 12 h 00">${esc(e.schedule || "")}</textarea></div>
+      <div class="field"><label for="lv-places">Nombre de places (0 = sans limite)</label><input id="lv-places" type="number" min="0" max="1000" value="${esc(String(e.places ?? 20))}"><span class="hint">Seuls les premiers abonnés, dans la limite des places, reçoivent le lien.</span></div>
       <div class="field"><label for="lv-link">Lien de la classe (Google Meet, Zoom…)</label><input id="lv-link" type="url" placeholder="https://meet.google.com/…" value="${esc(e.link || "")}"></div>
       <div class="field"><label for="lv-notes">Message aux participants (facultatif)</label><textarea id="lv-notes" rows="3" placeholder="Prévoir un cahier, des écouteurs et une bonne connexion.">${esc(e.notes || "")}</textarea></div>
+      <label class="switch"><input id="lv-free" type="checkbox" ${e.free ? "checked" : ""}><span class="sw" aria-hidden="true"></span><span>Gratuite : ouverte à tous les inscrits, sans abonnement</span></label>
       <label class="switch"><input id="lv-active" type="checkbox" ${e.active === 0 ? "" : "checked"}><span class="sw" aria-hidden="true"></span><span>Visible par les apprenants</span></label>
       <p id="formErr" class="err" role="alert"></p>
       <div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn btn-primary">${e.id ? "Enregistrer" : "Créer la session"}</button>${e.id ? `<button type="button" class="btn btn-ghost" data-livecancel>Annuler</button>` : ""}</div>
@@ -1740,7 +1744,7 @@ document.addEventListener("submit", async (e) => {
   const btn = f.querySelector("button:not([type=button])"); if (btn) btn.disabled = true;
   try {
     if (f.id === "liveForm") {
-      const body = { course_id: +$("#lv-course").value, level: $("#lv-level").value, title: $("#lv-title").value, starts_on: $("#lv-start").value, ends_on: $("#lv-end").value, schedule: $("#lv-sched").value, link: $("#lv-link").value, notes: $("#lv-notes").value, active: $("#lv-active").checked };
+      const body = { course_id: +$("#lv-course").value, level: $("#lv-level").value, title: $("#lv-title").value, starts_on: $("#lv-start").value, ends_on: $("#lv-end").value, schedule: $("#lv-sched").value, link: $("#lv-link").value, notes: $("#lv-notes").value, active: $("#lv-active").checked, free: $("#lv-free").checked, places: +$("#lv-places").value || 0 };
       if (f.dataset.id) await api(`/api/admin/live/${f.dataset.id}`, { method: "PUT", body }); else await api("/api/admin/live", { method: "POST", body });
       toast(f.dataset.id ? "Session enregistrée" : "Session créée"); liveEdit = null; render(); return;
     }

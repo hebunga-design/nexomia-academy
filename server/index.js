@@ -97,6 +97,7 @@ const server = http.createServer(async (req, res) => {
 
 const seeded = seedIfEmpty();
 const synced = syncBundledContent();
+try { require("./live").bootstrap(); } catch (e) { console.error("live bootstrap", e.message); }
 if (synced) console.log(`Cours d'anglais mis à jour : ${synced} leçons`);
 startReconciliation();
 Mail.startScheduler();
