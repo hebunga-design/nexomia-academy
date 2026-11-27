@@ -235,6 +235,26 @@ const HERO = {
   pt: { lang: "pt-BR", s: [["Olá! Eu me chamo Amani.", "Bonjour ! Je m’appelle Amani."], ["Prazer, eu sou a Grace.", "Enchantée, je suis Grace."], ["Eu sou de Lubumbashi, na RDC.", "Je suis de Lubumbashi, en RDC."]] },
 };
 let heroLang = "en", heroRun = 0;
+const WELCOME = [
+  ["fr", "Français", "fr-FR", "Bienvenue chez NEXOMIA ! Nous sommes ravis que tu sois là. Chez nous, on parle plusieurs langues : apprends, pratique et grandis avec nous."],
+  ["en", "English", "en-GB", "Welcome to NEXOMIA! We’re so happy you’re here. We speak many languages: learn, practise and grow with us."],
+  ["sw", "Kiswahili", "sw-KE", "Karibu NEXOMIA! Tunafurahi sana kuwa uko hapa. Tunazungumza lugha nyingi: jifunze, fanya mazoezi na ukue pamoja nasi."],
+  ["ln", "Lingala", "fr-FR", "Boyei malamu na NEXOMIA! Tosepeli mingi ete ozali awa. Tolobaka nkota ebele: yekola, mesana mpe kola elongo na biso."],
+  ["zh", "中文", "zh-CN", "欢迎来到 NEXOMIA！我们很高兴你在这里。我们说多种语言：和我们一起学习、练习、成长。"],
+];
+let welcomeRun = 0;
+async function playWelcome(only) {
+  const box = $("#welcome"); if (!box) return;
+  if (box.classList.contains("playing") && !only) { welcomeRun++; stopAudio(); box.classList.remove("playing"); return; }
+  heroRun++; const my = ++welcomeRun; stopAudio(); box.classList.add("playing");
+  for (const [code, name, lang, text] of WELCOME.filter((x) => !only || x[0] === only)) {
+    if (welcomeRun !== my || !$("#welcomeText")) return;
+    $("#welcomeText").textContent = text; $("#welcomeLang").textContent = name;
+    box.querySelectorAll("[data-wl]").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.wl === code)));
+    await playSentence({ text, audio: `/api/hero-audio/welcome-${code}.mp3` }, lang, 1); await sleep(500);
+  }
+  if (welcomeRun === my && $("#welcome")) $("#welcome").classList.remove("playing");
+}
 function courseCard(c) {
   return `<a class="course" href="#/cours/${esc(c.slug)}" style="text-decoration:none;color:inherit">
     <div class="cover" style="background:${esc(c.color)}"><span class="code">${esc(c.code)}</span><span class="big">${esc(c.big)}</span></div>
@@ -312,6 +332,9 @@ async function vHome() {
         <div class="slide"><h1>Apprendre,<br>c’est aussi <em>donner.</em></h1><p class="lede">Chaque abonnement soutient des jeunes vulnérables de Lubumbashi : orphelins, jeunes sans emploi.</p></div>
       </div>
       <div class="dots" role="group" aria-label="Messages">${[0, 1, 2, 3].map((i) => `<button class="dot${i ? "" : " on"}" data-slide="${i}" aria-label="Message ${i + 1}"></button>`).join("")}</div>
+      <div class="welcome" id="welcome"><button class="wplay" data-welcome aria-label="Écouter le message de bienvenue">${I.play}</button>
+        <div style="min-width:0"><p class="wtitle">🎙️ Message de bienvenue · <span id="welcomeLang">5 langues</span></p><p class="wtext" id="welcomeText">Bienvenue chez NEXOMIA ! Nous sommes ravis que tu sois là.</p>
+        <div class="wlangs" role="group" aria-label="Langue du message">${WELCOME.map(([c, n]) => `<button class="chip" data-wl="${c}" aria-pressed="false">${n}</button>`).join("")}</div></div></div>
       <div class="cta">${S.me ? `<a class="btn btn-primary" href="#/parcours">Continuer mon parcours</a>` : `<a class="btn btn-primary" href="#/inscription">Créer mon compte gratuit</a>`}<a class="btn btn-ghost" href="#/cours">Voir les cours</a></div></div>
     <div class="hero-card" id="heroCard">
       <div class="motif" aria-hidden="true"><span class="m1"></span><span class="m2" style="background:#fff"></span><span class="m2" style="background:#fff"></span><span class="q"><span class="m1"></span><span class="m3"></span><span class="m3"></span><span class="m4"></span></span></div>
@@ -356,6 +379,7 @@ async function vHome() {
 async function heroPlay() {
   const card = $("#heroCard"); if (!card) return;
   if (card.classList.contains("playing")) { heroRun++; stopAudio(); card.classList.remove("playing"); $("#heroPlay").innerHTML = I.play; return; }
+  welcomeRun++; if ($("#welcome")) $("#welcome").classList.remove("playing");
   const my = ++heroRun, h = HERO[heroLang];
   card.classList.add("playing"); $("#heroPlay").innerHTML = I.pause;
   for (let i = 0; i < h.s.length && heroRun === my; i++) {
@@ -1632,6 +1656,8 @@ document.addEventListener("click", async (e) => {
   if (ds.theme !== undefined) { const r = document.documentElement; const dark = r.dataset.theme ? r.dataset.theme === "dark" : matchMedia("(prefers-color-scheme: dark)").matches; r.dataset.theme = dark ? "light" : "dark"; store.set("theme", r.dataset.theme); return; }
   if (ds.logout !== undefined) { await api("/api/auth/logout", { method: "POST" }).catch(() => {}); S.me = null; S.catalog = null; stopPlay(); P.data = null; location.hash = "#/"; render(); return; }
   if (t.id === "heroPlay") return heroPlay();
+  if (ds.welcome !== undefined) return playWelcome();
+  if (ds.wl) return playWelcome(ds.wl);
   if (ds.hl) { heroRun++; stopAudio(); heroLang = ds.hl; return render(); }
   if (ds.filter) { S.filter = ds.filter; return render(); }
   if (ds.subscribe) { e.preventDefault(); const id = +ds.subscribe; if (!S.cart.includes(id)) S.cart.push(id); store.set("cart", S.cart); location.hash = "#/abonnements"; return; }

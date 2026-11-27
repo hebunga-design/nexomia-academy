@@ -177,9 +177,10 @@ r.get("/api/audio/:file", (ctx) => {
 
 // Audio de la page d'accueil (public, voix de Charlie).
 r.get("/api/hero-audio/:file", (ctx) => {
-  const m = /^(en|pt)-([0-2])\.mp3$/.exec(ctx.params.file);
-  if (!m) throw new HttpError(404, "Audio introuvable.");
-  if (!serveFile(ctx.req, ctx.res, require("./tts").heroFile(m[1], Number(m[2])), { cache: "public, max-age=86400" })) throw new HttpError(404, "Audio introuvable.");
+  const T = require("./tts"), f = ctx.params.file;
+  const m = /^(en|pt)-([0-2])\.mp3$/.exec(f), w = /^welcome-(fr|en|sw|ln|zh)\.mp3$/.exec(f);
+  const file = m ? T.heroFile(m[1], Number(m[2])) : w ? T.welcomeFile(w[1]) : null;
+  if (!file || !serveFile(ctx.req, ctx.res, file, { cache: "public, max-age=86400" })) throw new HttpError(404, "Audio introuvable.");
 });
 
 // ---------- Progression ----------

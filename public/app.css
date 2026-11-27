@@ -888,3 +888,15 @@ body.in-class .wa-fab{display:none}
 .steps-note{margin:10px 2px 0;font-size:14px;color:var(--muted)}
 .anchor{display:block;position:relative;top:-90px;visibility:hidden}
 .lrow.seq .num{background:var(--surface-2)}
+
+/* Message de bienvenue multilingue (page d'accueil) */
+.welcome{display:flex;gap:12px;align-items:flex-start;margin:18px 0 4px;padding:12px 14px;border-radius:16px;background:var(--surface);border:1px solid var(--line);max-width:560px;box-shadow:var(--shadow)}
+.welcome .wplay{flex:none;width:46px;height:46px;border-radius:50%;border:0;background:var(--green);color:var(--green-ink);display:grid;place-items:center;cursor:pointer}
+.welcome.playing .wplay{animation:wpulse 1.2s ease-in-out infinite}
+@keyframes wpulse{50%{box-shadow:0 0 0 8px rgba(47,125,50,.22)}}
+.welcome .wtitle{margin:0;font-weight:700;font-size:14px;color:var(--green)}
+.welcome .wtext{margin:4px 0 8px;font-size:15px;line-height:1.45;color:var(--ink)}
+.welcome .wlangs{display:flex;gap:6px;flex-wrap:wrap}
+.welcome .chip{font-size:13px;padding:5px 10px}
+.welcome .chip{background:var(--surface-2);color:var(--ink);border:1px solid var(--line)}
+.welcome .chip[aria-pressed="true"]{background:var(--green);color:var(--green-ink);border-color:var(--green)}

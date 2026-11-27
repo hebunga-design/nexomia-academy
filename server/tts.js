@@ -31,13 +31,13 @@ function voiceType(speaker, voicesJson) {
   return v[speaker] || DEFAULT_ROLES[speaker] || "f";
 }
 
-async function synthElevenLabs(text, lang, speaker, voiceId) {
+async function synthElevenLabs(text, lang, speaker, voiceId, model) {
   const voice = voiceId || process.env[`ELEVENLABS_VOICE_${speaker.toUpperCase()}`] || ELEVEN_DEFAULT[speaker] || ELEVEN_DEFAULT.f;
   const base = process.env.ELEVENLABS_BASE_URL || "https://api.elevenlabs.io";
   const res = await fetch(`${base}/v1/text-to-speech/${encodeURIComponent(voice)}?output_format=mp3_44100_64`, {
     method: "POST",
     headers: { "xi-api-key": process.env.ELEVENLABS_API_KEY, "Content-Type": "application/json", Accept: "audio/mpeg" },
-    body: JSON.stringify({ text, model_id: process.env.ELEVENLABS_MODEL || "eleven_multilingual_v2", voice_settings: { stability: 0.55, similarity_boost: 0.75 } }),
+    body: JSON.stringify({ text, model_id: model || process.env.ELEVENLABS_MODEL || "eleven_multilingual_v2", voice_settings: { stability: 0.55, similarity_boost: 0.75 } }),
     signal: AbortSignal.timeout(60000),
   });
   if (!res.ok) throw Object.assign(new Error(`ElevenLabs HTTP ${res.status}`), { status: res.status, body: (await res.text().catch(() => "")).slice(0, 200) });
@@ -113,6 +113,15 @@ const HERO = {
 const HERO_VOICE = process.env.ELEVENLABS_VOICE_HOME || "IKne3meq5aSn9XLyUdCD"; // Charlie
 const HERO_DIR = path.join(AUDIO_DIR, "hero");
 const heroFile = (lang, i) => path.join(HERO_DIR, `${HERO_VOICE}-${lang}-${i}.mp3`);
+// Message de bienvenue en plusieurs langues (même voix). Le swahili et le lingala passent par le modèle v3 (plus de langues).
+const WELCOME = {
+  fr: ["Bienvenue chez NEXOMIA ! Nous sommes ravis que tu sois là. Chez nous, on parle plusieurs langues : apprends, pratique et grandis avec nous.", "eleven_multilingual_v2"],
+  en: ["Welcome to NEXOMIA! We’re so happy you’re here. We speak many languages: learn, practise and grow with us.", "eleven_multilingual_v2"],
+  sw: ["Karibu NEXOMIA! Tunafurahi sana kuwa uko hapa. Tunazungumza lugha nyingi: jifunze, fanya mazoezi na ukue pamoja nasi.", "eleven_v3"],
+  ln: ["Boyei malamu na NEXOMIA! Tosepeli mingi ete ozali awa. Tolobaka nkota ebele: yekola, mesana mpe kola elongo na biso.", "eleven_v3"],
+  zh: ["欢迎来到 NEXOMIA！我们很高兴你在这里。我们说多种语言：和我们一起学习、练习、成长。", "eleven_multilingual_v2"],
+};
+const welcomeFile = (lang) => path.join(HERO_DIR, `${HERO_VOICE}-welcome-${lang}.mp3`);
 async function ensureHero() {
   if (provider() !== "elevenlabs") return;
   fs.mkdirSync(HERO_DIR, { recursive: true });
@@ -120,7 +129,11 @@ async function ensureHero() {
     if (fs.existsSync(heroFile(lang, i))) continue;
     try { const buf = await synthElevenLabs(lines[i], lang, "m", HERO_VOICE); if (buf.length > 500) fs.writeFileSync(heroFile(lang, i), buf); }
     catch (e) { console.error(`[tts] accueil ${lang}-${i} : ${e.message}`); return; }
+  }  for (const [lang, [text, model]] of Object.entries(WELCOME)) {
+    if (fs.existsSync(welcomeFile(lang))) continue;
+    try { const buf = await synthElevenLabs(text, lang, "m", HERO_VOICE, model); if (buf.length > 500) fs.writeFileSync(welcomeFile(lang), buf); }
+    catch (e) { console.error(`[tts] bienvenue ${lang} : ${e.message}${e.body ? " · " + e.body : ""}`); }
   }
 }
 
-module.exports = { provider, status, runJob, stopJob, ensureHero, heroFile };
+module.exports = { provider, status, runJob, stopJob, ensureHero, heroFile, welcomeFile };
