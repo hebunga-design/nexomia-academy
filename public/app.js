@@ -241,6 +241,14 @@ const WELCOME = [
   ["sw", "Kiswahili", "sw-KE", "Karibu NEXOMIA! Tunafurahi sana kuwa uko hapa. Tunazungumza lugha nyingi: jifunze, fanya mazoezi na ukue pamoja nasi."],
   ["ln", "Lingala", "fr-FR", "Boye malamu na NEXOMIA ! Tosepeli mingi denge ozali awa."],
   ["zh", "中文", "zh-CN", "欢迎来到 NEXOMIA！我们很高兴你在这里。我们说多种语言：和我们一起学习、练习、成长。"],
+  ["pt", "Português", "pt-PT", "Bem-vindo à NEXOMIA! Estamos muito felizes por estares aqui. Falamos várias línguas: aprende, pratica e cresce connosco."],
+  ["rn", "Kirundi", "rn", "Kaze muri NEXOMIA! Turanezerewe cane kuba uri ng'aha. Tuvuga indimi nyinshi: wige, wimenyereze kandi ukure hamwe natwe."],
+  ["lg", "Luganda", "lg", "Tukwanirizza mu NEXOMIA! Tusanyuse nnyo okuba nti oli wano. Twogera ennimi nnyingi: yiga, weegezeemu era okule naffe."],
+  ["ur", "اردو", "ur-PK", "نیکسومیا میں خوش آمدید! ہمیں بہت خوشی ہے کہ آپ یہاں ہیں۔ ہم کئی زبانیں بولتے ہیں: ہمارے ساتھ سیکھیں، مشق کریں اور آگے بڑھیں۔"],
+  ["zu", "isiZulu", "zu-ZA", "Siyakwamukela ku-NEXOMIA! Sijabule kakhulu ukuthi ulapha. Sikhuluma izilimi eziningi: funda, zijwayeze futhi ukhule nathi."],
+  ["xh", "isiXhosa", "xh-ZA", "Wamkelekile kwi-NEXOMIA! Sivuya kakhulu kuba ulapha. Sithetha iilwimi ezininzi: funda, uziqhelanise kwaye ukhule nathi."],
+  ["af", "Afrikaans", "af-ZA", "Welkom by NEXOMIA! Ons is baie bly dat jy hier is. Ons praat baie tale: leer, oefen en groei saam met ons."],
+  ["st", "Sesotho", "st-ZA", "Rea o amohela ho NEXOMIA! Re thabile haholo hore ebe o mona. Re bua dipuo tse ngata: ithute, ikwetlise mme o hole le rona."],
 ];
 let welcomeRun = 0;
 async function playWelcome(only) {
@@ -333,7 +341,7 @@ async function vHome() {
       </div>
       <div class="dots" role="group" aria-label="Messages">${[0, 1, 2, 3].map((i) => `<button class="dot${i ? "" : " on"}" data-slide="${i}" aria-label="Message ${i + 1}"></button>`).join("")}</div>
       <div class="welcome" id="welcome"><button class="wplay" data-welcome aria-label="Écouter le message de bienvenue">${I.play}</button>
-        <div style="min-width:0"><p class="wtitle">🎙️ Message de bienvenue · <span id="welcomeLang">5 langues</span></p><p class="wtext" id="welcomeText">Bienvenue chez NEXOMIA ! Nous sommes ravis que tu sois là.</p>
+        <div style="min-width:0"><p class="wtitle">🎙️ Message de bienvenue · <span id="welcomeLang">13 langues</span></p><p class="wtext" id="welcomeText" dir="auto">Bienvenue chez NEXOMIA ! Nous sommes ravis que tu sois là.</p>
         <div class="wlangs" role="group" aria-label="Langue du message">${WELCOME.map(([c, n]) => `<button class="chip" data-wl="${c}" aria-pressed="false">${n}</button>`).join("")}</div></div></div>
       <div class="cta">${S.me ? `<a class="btn btn-primary" href="#/parcours">Continuer mon parcours</a>` : `<a class="btn btn-primary" href="#/inscription">Créer mon compte gratuit</a>`}<a class="btn btn-ghost" href="#/cours">Voir les cours</a></div></div>
     <div class="hero-card" id="heroCard">

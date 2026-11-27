@@ -178,7 +178,7 @@ r.get("/api/audio/:file", (ctx) => {
 // Audio de la page d'accueil (public, voix de Charlie).
 r.get("/api/hero-audio/:file", (ctx) => {
   const T = require("./tts"), f = ctx.params.file;
-  const m = /^(en|pt)-([0-2])\.mp3$/.exec(f), w = /^welcome-(fr|en|sw|ln|zh)\.mp3$/.exec(f);
+  const m = /^(en|pt)-([0-2])\.mp3$/.exec(f), w = /^welcome-(fr|en|sw|ln|zh|pt|rn|lg|ur|zu|xh|af|st)\.mp3$/.exec(f);
   // Une vraie voix enregistrée (public/welcome/<langue>.mp3) passe avant la voix générée.
   const human = w && path.join(__dirname, "..", "public", "welcome", `${w[1]}.mp3`);
   const file = m ? T.heroFile(m[1], Number(m[2])) : w ? (fs.existsSync(human) ? human : T.welcomeFile(w[1])) : null;

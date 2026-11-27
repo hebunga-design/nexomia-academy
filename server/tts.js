@@ -120,6 +120,14 @@ const WELCOME = {
   sw: ["Karibu NEXOMIA! Tunafurahi sana kuwa uko hapa. Tunazungumza lugha nyingi: jifunze, fanya mazoezi na ukue pamoja nasi.", "eleven_v3"],
   ln: ["Boye malamu na NEXOMIA ! Tosepeli mingi denge ozali awa.", "eleven_v3"],
   zh: ["欢迎来到 NEXOMIA！我们很高兴你在这里。我们说多种语言：和我们一起学习、练习、成长。", "eleven_multilingual_v2"],
+  pt: ["Bem-vindo à NEXOMIA! Estamos muito felizes por estares aqui. Falamos várias línguas: aprende, pratica e cresce connosco.", "eleven_multilingual_v2"],
+  rn: ["Kaze muri NEXOMIA! Turanezerewe cane kuba uri ng'aha. Tuvuga indimi nyinshi: wige, wimenyereze kandi ukure hamwe natwe.", "eleven_v3"],
+  lg: ["Tukwanirizza mu NEXOMIA! Tusanyuse nnyo okuba nti oli wano. Twogera ennimi nnyingi: yiga, weegezeemu era okule naffe.", "eleven_v3"],
+  ur: ["نیکسومیا میں خوش آمدید! ہمیں بہت خوشی ہے کہ آپ یہاں ہیں۔ ہم کئی زبانیں بولتے ہیں: ہمارے ساتھ سیکھیں، مشق کریں اور آگے بڑھیں۔", "eleven_v3"],
+  zu: ["Siyakwamukela ku-NEXOMIA! Sijabule kakhulu ukuthi ulapha. Sikhuluma izilimi eziningi: funda, zijwayeze futhi ukhule nathi.", "eleven_v3"],
+  xh: ["Wamkelekile kwi-NEXOMIA! Sivuya kakhulu kuba ulapha. Sithetha iilwimi ezininzi: funda, uziqhelanise kwaye ukhule nathi.", "eleven_v3"],
+  af: ["Welkom by NEXOMIA! Ons is baie bly dat jy hier is. Ons praat baie tale: leer, oefen en groei saam met ons.", "eleven_v3"],
+  st: ["Rea o amohela ho NEXOMIA! Re thabile haholo hore ebe o mona. Re bua dipuo tse ngata: ithute, ikwetlise mme o hole le rona.", "eleven_v3"],
 };
 const welcomeFile = (lang) => path.join(HERO_DIR, `${HERO_VOICE}-welcome-${lang}${lang === "ln" ? "-v2" : ""}.mp3`);
 async function ensureHero() {

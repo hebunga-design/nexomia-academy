@@ -1,5 +1,5 @@
 // Service worker NEXOMIA : application disponible hors connexion, leçons et audios téléchargés.
-const SHELL = "nx-shell-v5";
+const SHELL = "nx-shell-v6";
 const OFFLINE = "nx-offline-v1";
 const SHELL_FILES = ["/", "/manifest.webmanifest", "/icon-192.png"];
 
