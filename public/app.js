@@ -1258,6 +1258,9 @@ async function vSubs(query) {
   const courses = await loadCatalog(true);
   const mine = S.me ? await api("/api/me/orders") : { orders: [], subs: [] };
   S.cart = S.cart.filter((id) => courses.some((c) => c.id === id));
+  // Lien direct : #/abonnements?cours=anglais met ce cours dans le panier.
+  const want = (query.get("cours") || "").toLowerCase();
+  if (want) { const c = courses.find((x) => x.slug === want || x.slug.startsWith(want) || x.title.toLowerCase().includes(want)); if (c && !S.cart.includes(c.id)) { S.cart.push(c.id); store.set("cart", S.cart); } }
   const cart = S.cart.map((id) => courses.find((c) => c.id === id));
   const total = priceFor(cart.length), single = S.pricing.tiers[0] * cart.length;
   const ref = query.get("ref");
